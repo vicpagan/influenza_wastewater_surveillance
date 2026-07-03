@@ -53,3 +53,11 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# covid-19 files for reference
+covid_eliminate_strains/
+
+# testing strains
+msas/
+reference_sequences/
+simulation/
