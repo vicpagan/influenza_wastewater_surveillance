@@ -26,4 +26,4 @@ void needleman_wunsch_align2(const char *a, const char *b,
                              const scoring_t *scoring,
                              nw_aligner_t *nw, alignment_t *result);
 
-#endif
+#endif /* NEEDLEMAN_WUNSCH_HEADER_SEEN */

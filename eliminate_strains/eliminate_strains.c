@@ -14,6 +14,11 @@ char **resize_MSA;
 char **resize_names_of_strains;
 int *reference_index;
 char **sam_results;
+/**
+ * @brief Determine the MSA's alignment width (number of columns) from the first entry.
+ * @param MSA_file Open gzipped MSA FASTA file, positioned at the start.
+ * @return Number of bases/columns in one aligned sequence.
+ */
 int setMSALength(gzFile MSA_file)
 {
 	char buffer[FASTA_MAXLINE];
@@ -41,6 +46,11 @@ int setMSALength(gzFile MSA_file)
 	return length;
 }
 
+/**
+ * @brief Count strains in the MSA and find the longest strain name.
+ * @param MSA_file Open gzipped MSA FASTA file, positioned at the start.
+ * @param strain_info Output: [0] = number of strains, [1] = max name length.
+ */
 void setNumStrains(gzFile MSA_file, int *strain_info)
 {
 	char buffer[FASTA_MAXLINE];
@@ -63,6 +73,22 @@ void setNumStrains(gzFile MSA_file, int *strain_info)
 	strain_info[1] = maxname;
 }
 
+/**
+ * @brief Load the MSA into memory and locate the reference strain's row.
+ *
+ * Reads every strain's name and sequence into `names`/`MSA` (uppercasing
+ * A/C/G/T, keeping '-' as-is, and zeroing out anything else). Separately
+ * checks each name against a hardcoded list of known reference-strain names
+ * to find which row is "the" reference (see @note).
+ *
+ * @param MSA_file Open gzipped MSA FASTA file, positioned at the start.
+ * @param MSA Output: MSA[i] filled with strain i's sequence.
+ * @param names Output: names[i] filled with strain i's name.
+ * @param length_of_MSA Alignment width (from setMSALength()); unused here but kept for signature symmetry.
+ * @return Row index of the strain matching one of the hardcoded reference names, or 0 if none matched.
+ * @note The hardcoded name list is SARS-CoV-2-era; needs updating (or a config-driven
+ * replacement) for influenza reference strains.
+ */
 int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA)
 {
 	char buffer[FASTA_MAXLINE];
@@ -156,6 +182,14 @@ int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA)
 	return ref_index;
 }
 
+/**
+ * @brief Replace -1 (missing) entries in a numerically-coded MSA with each site's majority allele.
+ * @param number_of_strains Number of rows in MSA.
+ * @param length_of_MSA Number of columns in MSA.
+ * @param MSA Numerically-coded alignment (0-3 = base, -1 = missing), modified in place.
+ * @param imputation Per-site majority-allele code, from findMaxAllele().
+ * @note Not currently called from main() (the call site is commented out).
+ */
 void imputeNucMat(int number_of_strains, int length_of_MSA, int **MSA, int *imputation)
 {
 	int i, j;
@@ -171,6 +205,13 @@ void imputeNucMat(int number_of_strains, int length_of_MSA, int **MSA, int *impu
 	}
 }
 
+/**
+ * @brief Find the most frequent allele at each MSA site, for imputeNucMat().
+ * @param length_of_MSA Number of sites.
+ * @param allele_frequency Per-site counts of each of the 4 bases.
+ * @param imputation Output: per-site majority-allele code (0-3).
+ * @note Not currently called from main().
+ */
 void findMaxAllele(int length_of_MSA, int **allele_frequency, int *imputation)
 {
 	int i, j;
@@ -190,6 +231,18 @@ void findMaxAllele(int length_of_MSA, int **allele_frequency, int *imputation)
 	}
 }
 
+/**
+ * @brief Find strains with identical sequences and blank out the duplicates' names.
+ * @param number_of_strains Number of rows in MSA.
+ * @param length_of_MSA Number of columns in MSA.
+ * @param MSA Numerically-coded alignment.
+ * @param identical Scratch/output array of duplicate row indices (-1-terminated on input).
+ * @param names_of_strains Strain names; duplicates get their name blanked ('\0').
+ * @param maxname Length of each name buffer in names_of_strains.
+ * @return Number of strains remaining after removing duplicates.
+ * @note Not currently invoked -- no CLI flag sets opt.remove_identical, so this
+ * path is never reached from main().
+ */
 int removeIdenticalStrains(int number_of_strains, int length_of_MSA, int **MSA, int *identical, char **names_of_strains, int maxname)
 {
 	int i, j, k;
@@ -291,6 +344,43 @@ int removeIdenticalStrains(int number_of_strains, int length_of_MSA, int **MSA, 
 	return number_of_strains - number_of_identical_strains;
 }
 
+/**
+ * @brief Compute per-site allele frequencies from paired-end reads, then iteratively
+ * eliminate reference strains incompatible with those frequencies.
+ *
+ * Three stages, in order:
+ *  1. Walk the SAM file read-pair by read-pair, tallying A/C/G/T counts (and deletions)
+ *     at each MSA site the reads cover, translating SAM positions to MSA columns via
+ *     reference_index[]. Overlapping mate pairs are only counted once (see `visited`).
+ *  2. Convert counts to frequencies, drop sites below `coverage`, and mark any base
+ *     with frequency < freq_threshold as "bad" at that site.
+ *  3. Iteratively remove (blank the name of) any strain carrying too many "bad" bases
+ *     at the variant sites, growing the incompatibility tolerance each pass until the
+ *     number of strains remaining falls within [min_strains_remaining, max_strains_remaining).
+ *
+ * @param sam Open SAM file (paired-end alignments).
+ * @param allele Output/scratch: per-site A/C/G/T counts, then converted to frequencies.
+ * @param length_of_MSA Number of MSA columns.
+ * @param MSA Numerically-coded... (actually char-coded) alignment; see names_of_strains.
+ * @param number_of_strains Total strains before elimination.
+ * @param names_of_strains Strain names; eliminated strains get their name blanked.
+ * @param freq_threshold Below this frequency, a base is "bad" at a site.
+ * @param maxname Length of each name buffer.
+ * @param tstart Scratch timing variable (reused internally).
+ * @param tend Scratch timing variable (reused internally).
+ * @param number_of_variant_sites Length of variant_sites.
+ * @param variant_sites Sites to check for strain elimination; entries get set to -1
+ * if not adequately covered.
+ * @param coverage Minimum read depth to trust a site's allele frequency.
+ * @param reference_index Maps SAM alignment position -> MSA column (see align_reference.c).
+ * @param min_strains_remaining Lower bound on strains remaining; loop stops once reached.
+ * @param max_strains_remaining Upper bound; exceeding this aborts the whole program.
+ * @param print_counts If non-empty, path to dump per-site allele counts.
+ * @param max_sam_length Output: [0] = longest raw SAM line seen, [1] = number of SAM records.
+ * @param print_deletions If non-empty, path to dump sites with deletion frequency above threshold.
+ * @param deletion_threshold Frequency threshold for reporting a deletion site.
+ * @return Number of strains remaining after elimination.
+ */
 int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold)
 {
 	int i, j;
@@ -325,6 +415,7 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 	{
 		deletions[i] = 0;
 	}
+	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read pair ---
 	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
 	{
 		if (buffer[0] != '@')
@@ -638,6 +729,7 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 		fclose(deletion_sites_file);
 	}
 	// free(deletions);
+	// --- Stage 2: convert counts to frequencies, drop low-coverage sites, mark "bad" bases ---
 	int covered = 0;
 	for (i = 0; i < length_of_MSA; i++)
 	{
@@ -810,6 +902,7 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 	//	}
 	// }
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	// --- Stage 3: iteratively eliminate strains incompatible with the "bad" bases above ---
 	int number_remaining = number_of_strains;
 	int base;
 	int count;
@@ -938,6 +1031,12 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 	return number_remaining;
 }
 
+/**
+ * @brief Single-end counterpart of calculateAlleleFreq_paired(): same three stages
+ * (tally allele counts -> threshold "bad" bases -> iteratively eliminate strains),
+ * without the mate-pair overlap handling paired-end reads need.
+ * @see calculateAlleleFreq_paired for full parameter documentation (identical here).
+ */
 int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold)
 {
 	int i, j;
@@ -956,6 +1055,7 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 	{
 		deletions[i] = 0;
 	}
+	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read ---
 	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
 	{
 		if (buffer[0] != '@')
@@ -1103,6 +1203,7 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 		}
 		fclose(deletion_sites_file);
 	}
+	// --- Stage 2: convert counts to frequencies, drop low-coverage sites, mark "bad" bases ---
 	int covered = 0;
 	for (i = 0; i < length_of_MSA; i++)
 	{
@@ -1266,6 +1367,7 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Eliminating strains...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	// --- Stage 3: iteratively eliminate strains incompatible with the "bad" bases above ---
 	int number_remaining = 0;
 	int base;
 	int count;
@@ -1377,6 +1479,14 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 	return number_remaining;
 }
 
+/**
+ * @brief Classify a SAM FLAG value's read-pair role by inspecting specific bits.
+ * @param n The SAM FLAG field value.
+ * @return -1 if unmapped (bit 2 set); 2 if "not paired" (bit 3 set); otherwise
+ * bit 6 of the flag: 1 = first read in pair, 0 = second read in pair.
+ * @note Despite the name, this does not convert to a binary string -- it extracts
+ * specific SAM flag bits to answer "which mate is this?".
+ */
 int dec2bin(int n)
 {
 	int binaryNum[32];
@@ -1403,16 +1513,29 @@ int dec2bin(int n)
 	}
 }
 
+/**
+ * @brief Thread worker: build mismatch-matrix rows for this thread's slice of the
+ * preloaded SAM lines (global `sam_results`).
+ *
+ * For each read pair, counts mismatches (per strain, in the global `resize_MSA`
+ * panel) at every aligned position, avoiding double-counting bases covered by
+ * both mates of a pair (see the `visited` array). Formats one output row per
+ * read pair as "readname\\talignment_size\\tmismatch_count...", written into
+ * this thread's ThreadStruct.results.
+ *
+ * @param ptr Pointer to this thread's ThreadStruct (cast internally).
+ * @return NULL always; real output is written into ptr->results, not returned.
+ */
 void *writeMismatchMatrix_paired(void *ptr)
 {
 	int i, j, k;
-	struct thread_struct *tstr = (thread_struct *)ptr;
-	resultsStruct *results = tstr->str;
-	int max_sam_length = tstr->max_sam_length;
+	struct ThreadStruct *tstr = (ThreadStruct *)ptr;
+	ResultsStruct *results = tstr->results;
+	int max_sam_length = tstr->max_sam_line_length;
 	int length_of_MSA = tstr->length_of_MSA;
 	int number_of_strains = tstr->number_of_strains;
 	int number_of_strains_remaining = tstr->number_of_strains_remaining;
-	int thread_number = tstr->thread_number;
+	int thread_number = tstr->thread_index;
 	char buffer[FASTA_MAXLINE];
 	char *s;
 	int cigar[MAX_CIGAR];
@@ -1445,7 +1568,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 	char *resultsPath = (char *)malloc((max_sam_length + 300000) * sizeof(char));
 	int index_mismatch = 0;
 	char *context = NULL;
-	for (line_count = tstr->start; line_count < tstr->end; line_count++)
+	for (line_count = tstr->sam_line_start; line_count < tstr->sam_line_end; line_count++)
 	{
 		line_number++;
 		char *buffer_copy = strdup(sam_results[line_count]);
@@ -1915,6 +2038,23 @@ void *writeMismatchMatrix_paired(void *ptr)
 	free(number_of_mismatches);
 }
 
+/**
+ * @brief Single-threaded, streaming counterpart to writeMismatchMatrix_paired().
+ *
+ * Same per-pair mismatch-counting logic, but reads SAM lines directly from
+ * `samfile` one at a time (instead of the preloaded `sam_results` array) and
+ * writes rows straight to `outfile` -- used for -n/--no-read-sam mode, which
+ * trades speed for lower memory use.
+ *
+ * @param outfile Output mismatch-matrix file.
+ * @param samfile Open SAM file (paired-end alignments).
+ * @param MSA Strain panel (post-elimination), one row per remaining strain.
+ * @param length_of_MSA Number of MSA columns.
+ * @param number_of_strains Total strains before elimination (unused here; kept for signature symmetry).
+ * @param number_of_strains_remaining Strains left after elimination (columns in the matrix).
+ * @param names_of_strains Names of the remaining strains (written as the header row).
+ * @param reference_index Maps SAM alignment position -> MSA column.
+ */
 void writeMismatchMatrix_paired_no_read_bam(FILE *outfile, FILE *samfile, char **MSA, int length_of_MSA, int number_of_strains, int number_of_strains_remaining, char **names_of_strains, int *reference_index)
 {
 	int i, j, k;
@@ -2403,6 +2543,17 @@ void writeMismatchMatrix_paired_no_read_bam(FILE *outfile, FILE *samfile, char *
 	}
 	free(number_of_mismatches);
 }
+/**
+ * @brief Single-end counterpart to writeMismatchMatrix_paired_no_read_bam(): builds
+ * the mismatch matrix one read at a time, with no mate-pair overlap handling needed.
+ * @param outfile Output mismatch-matrix file.
+ * @param samfile Open SAM file (single-end alignments).
+ * @param MSA Full (pre-elimination) strain panel; indexed via strains_kept.
+ * @param strains_kept Row indices into MSA of the strains that survived elimination.
+ * @param length_of_MSA Number of MSA columns.
+ * @param number_of_strains Total strains before elimination.
+ * @param number_of_strains_remaining Strains left after elimination (columns in the matrix).
+ */
 void writeMismatchMatrix(FILE *outfile, FILE *samfile, char **MSA, int *strains_kept, int length_of_MSA, int number_of_strains, int number_of_strains_remaining)
 {
 	int i, j, k;
@@ -2595,6 +2746,12 @@ void writeMismatchMatrix(FILE *outfile, FILE *samfile, char **MSA, int *strains_
 	free(number_of_mismatches);
 }
 
+/**
+ * @brief Read a variant-sites file: first line is a count, remaining lines are site indices.
+ * @param variant_sites_file Open file.
+ * @param number_of_sites Output: [0] = count read from the first line.
+ * @return Newly allocated array of site indices (caller must free()).
+ */
 int *readVariantSitesFile(FILE *variant_sites_file, int *number_of_sites)
 {
 	char buffer[20];
@@ -2619,6 +2776,12 @@ int *readVariantSitesFile(FILE *variant_sites_file, int *number_of_sites)
 	return variant_sites;
 }
 
+/**
+ * @brief Read one integer per line into `reference`.
+ * @param file Open file of newline-separated integers.
+ * @param reference Output array, must be pre-sized by the caller.
+ * @note Dead code: its only call site (in main()) is inside a commented-out block.
+ */
 void readReferencePositionsFile(FILE *file, int *reference)
 {
 	char buffer[20];
@@ -2630,6 +2793,15 @@ void readReferencePositionsFile(FILE *file, int *reference)
 	}
 }
 
+/**
+ * @brief Find the last non-'A' position before the reference's trailing poly-A tail.
+ * @param MSA Strain panel.
+ * @param length_of_MSA Number of MSA columns (unused directly; loop uses `reference`).
+ * @param ref_index Row index of the reference strain in MSA.
+ * @param reference Ungapped-position lookup array (see readReferencePositionsFile()).
+ * @return MSA column of the last non-'A' base before the poly-A tail.
+ * @note Dead code: its only call site (in main()) is commented out.
+ */
 int findEndOfPolyA(char **MSA, int length_of_MSA, int ref_index, int *reference)
 {
 	int i;
@@ -2676,6 +2848,16 @@ int findEndOfPolyA(char **MSA, int length_of_MSA, int ref_index, int *reference)
 	fclose(file);
 	return i;
 }*/
+/**
+ * @brief Copy the strains that survived elimination into the pre-sized
+ * global resize_MSA/resize_names_of_strains buffers, then free the originals.
+ * @param number_of_strains_remaining Number of strains to copy (size of strains_kept).
+ * @param strains_kept Row indices into MSA/names_of_strains of surviving strains.
+ * @param MSA Full (pre-elimination) strain panel; freed at the end.
+ * @param names_of_strains Full (pre-elimination) strain names; freed at the end.
+ * @param maxname Length of each name buffer.
+ * @param number_of_total_strains Total rows in MSA/names_of_strains before elimination.
+ */
 void reallocate_memory(int number_of_strains_remaining, int *strains_kept, char **MSA, char **names_of_strains, int maxname, int number_of_total_strains)
 {
 	int i, j;
@@ -2694,6 +2876,12 @@ void reallocate_memory(int number_of_strains_remaining, int *strains_kept, char 
 	free(names_of_strains);
 	free(MSA);
 }
+/**
+ * @brief Load every non-header line of a SAM file into the global `sam_results` array.
+ * @param sam_file Open SAM file.
+ * @note Used for threaded paired-mode (opt.no_read_bam == 0); sam_results must
+ * already be allocated to hold at least as many lines as are in the file.
+ */
 void readInSamFile(FILE *sam_file)
 {
 	char buffer[FASTA_MAXLINE];
@@ -2708,6 +2896,18 @@ void readInSamFile(FILE *sam_file)
 		}
 	}
 }
+/**
+ * @brief Nudge a thread's [start, end) line range so it doesn't split a read pair.
+ *
+ * If `start` lands on a second-in-pair SAM record, backs up one line so the
+ * pair starts together; if `end` lands on a first-in-pair record, extends by
+ * one line so the pair finishes together.
+ *
+ * @param start Proposed first line index (into sam_results) for this thread.
+ * @param end Proposed last line index (into sam_results) for this thread.
+ * @param return_arr Output: [0] = adjusted start, [1] = adjusted end.
+ * @param max_sam_length Length of the scratch line buffer to allocate.
+ */
 void adjust_start_end(int start, int end, int *return_arr, int max_sam_length)
 {
 	char *s;
@@ -2742,6 +2942,11 @@ void adjust_start_end(int start, int end, int *return_arr, int max_sam_length)
 	}
 	free(buffer_copy);
 }
+/**
+ * @brief Trim 15bp off each end of every read in a FASTQ file.
+ * @param filename Base filename; reads "<filename>_trimmed1.fastq", writes
+ * "<filename>_trimmed2.fastq".
+ */
 void trim_ends_fastq(char filename[])
 {
 	FILE *filename_ptr;
@@ -2831,6 +3036,10 @@ void trim_ends_fastq(char filename[])
 	free(line2);
 	free(line3);
 }
+/**
+ * @brief Trim 15bp off each end of every sequence in a FASTA file.
+ * @param filename Base filename; reads "<filename>.fasta", writes "<filename>_trimmed2.fasta".
+ */
 void trim_ends_fasta(char filename[])
 {
 	FILE *filename_ptr;
@@ -2900,6 +3109,14 @@ void trim_ends_fasta(char filename[])
 	free(line0);
 	free(line1);
 }
+/**
+ * @brief Quality-trim and end-trim the input reads (single-end or paired), in place.
+ *
+ * For FASTQ input, runs `fastq_quality_trimmer` then trim_ends_fastq(); for
+ * FASTA input, just runs trim_ends_fasta(). Updates opt's read-file path(s)
+ * to point at the trimmed output.
+ * @param opt CLI options; read file paths are read and rewritten in place.
+ */
 void clean_reads(Options opt)
 {
 	int i;
@@ -3063,6 +3280,10 @@ void clean_reads(Options opt)
 		free(prefix_reverse);
 	}
 }
+/**
+ * @brief Build the Bowtie2 index (if missing) and run Bowtie2 to produce opt.sam.
+ * @param opt CLI options: read files, reference, paired/fasta_format flags, output SAM path.
+ */
 void perform_bowtie_alignment(Options opt)
 {
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
@@ -3098,6 +3319,11 @@ void perform_bowtie_alignment(Options opt)
 	}
 	free(buffer);
 }
+/**
+ * @brief Same as perform_bowtie_alignment(), but with --xeq (extended CIGAR,
+ * distinguishing '=' match from 'X' mismatch), used only for error-rate estimation.
+ * @param opt CLI options: read files, reference, paired/fasta_format flags, output SAM path.
+ */
 void perform_bowtie_alignment_xeq(Options opt)
 {
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
@@ -3133,6 +3359,16 @@ void perform_bowtie_alignment_xeq(Options opt)
 	}
 	free(buffer);
 }
+/**
+ * @brief Estimate whether reads need quality/end trimming, from an --xeq SAM file.
+ *
+ * Counts mismatches ('X' CIGAR ops) in the first/last 10bp of each read
+ * ("ends") versus the middle, and flags cleaning as needed if the per-base
+ * error rate at the ends is more than 3x the middle's rate.
+ *
+ * @param sam_file Path to a SAM file produced with perform_bowtie_alignment_xeq().
+ * @return 1 if reads should be cleaned (see clean_reads()), 0 otherwise.
+ */
 int calculate_error_rates(char sam_file[])
 {
 	FILE *sam_ptr;
@@ -3238,6 +3474,16 @@ int calculate_error_rates(char sam_file[])
 	}
 	return invoke_cleaning;
 }
+/**
+ * @brief Entry point: runs the full strain-elimination + mismatch-matrix pipeline.
+ *
+ * Stages: parse CLI options -> (optionally) clean reads -> align reference to
+ * build reference_index -> run Bowtie2 (twice: once --xeq to check error rates,
+ * once normally) -> load the MSA panel -> compute allele frequencies and
+ * eliminate incompatible strains -> build the read x strain mismatch matrix
+ * (threaded if paired+read-sam mode) -> hand off to EM_C_LLR.R for the final
+ * relative-abundance estimation.
+ */
 int main(int argc, char **argv)
 {
 	struct timespec tstart = {0, 0}, tend = {0.0};
@@ -3256,7 +3502,7 @@ int main(int argc, char **argv)
 	opt.no_read_bam = 0;
 	opt.deletion_threshold = 0.002;
 	memset(opt.print_counts, '\0', 1000);
-	memset(opt.MSA_reference, '\0', 1000);
+	memset(opt.msa_reference_file, '\0', 1000);
 	memset(opt.print_deletions, '\0', 1000);
 	parse_options(argc, argv, &opt);
 	int i, j, k, l;
@@ -3274,7 +3520,7 @@ int main(int argc, char **argv)
 	{
 		reference_index[i] = 0;
 	}
-	align_references(number_of_problematic_sites, problematic_sites, opt.MSA_reference, opt);
+	align_references(number_of_problematic_sites, problematic_sites, opt.msa_reference_file, opt);
 	perform_bowtie_alignment_xeq(opt);
 	int invoke_cleaning = calculate_error_rates(opt.sam);
 	if (invoke_cleaning == 1 && opt.clean_reads == 0)
@@ -3439,6 +3685,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "File could not be opened.\n");
 	if ((sam_file = fopen(opt.sam, "r")) == (FILE *)NULL)
 		fprintf(stderr, "File could not be opened.\n");
+	// --- Threaded paired-end mode: load all SAM lines into memory, split them
+	// across opt.number_of_cores threads (each running writeMismatchMatrix_paired),
+	// then stitch each thread's output rows back together in order. ---
 	if (opt.paired == 1 && opt.no_read_bam == 0)
 	{
 		sam_results = (char **)malloc(max_sam_length[1] * sizeof(char *));
@@ -3459,16 +3708,19 @@ int main(int argc, char **argv)
 		}
 		fprintf(outfile, "\n");
 		pthread_t threads[opt.number_of_cores];	 // array of our threads
-		thread_struct tstr[opt.number_of_cores]; // array of stuct that contains input and output for each thread
+		ThreadStruct tstr[opt.number_of_cores]; // array of stuct that contains input and output for each thread
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			tstr[i].start = 0;
-			tstr[i].end = 0;
-			tstr[i].str = malloc(sizeof(struct resultsStruct));
+			tstr[i].sam_line_start = 0;
+			tstr[i].sam_line_end = 0;
+			tstr[i].results = malloc(sizeof(struct ResultsStruct));
 			tstr[i].number_of_strains_remaining = number_of_strains_remaining;
 			tstr[i].number_of_strains = number_of_strains;
 			tstr[i].length_of_MSA = length_of_MSA;
 		}
+		// Split sam_results into opt.number_of_cores roughly-equal chunks, then
+		// nudge each chunk's boundary (via adjust_start_end) so no thread's
+		// range splits a read pair across two threads.
 		int divideFile, start, end;
 		divideFile = max_sam_length[1] / opt.number_of_cores;
 		j = 0;
@@ -3481,7 +3733,7 @@ int main(int argc, char **argv)
 				end = max_sam_length[1] - 1;
 			}
 			int *adjust_ends = (int *)malloc(2 * sizeof(int));
-			if (tstr[i].start == 1)
+			if (tstr[i].sam_line_start == 1)
 			{
 				start++;
 			}
@@ -3490,33 +3742,33 @@ int main(int argc, char **argv)
 			adjust_start_end(start, end, adjust_ends, max_sam_length[0]);
 			if (start != adjust_ends[0])
 			{
-				tstr[i - 1].end = tstr[i - 1].end - 1;
+				tstr[i - 1].sam_line_end = tstr[i - 1].sam_line_end - 1;
 			}
 			if (end != adjust_ends[1])
 			{
-				tstr[i + 1].start = tstr[i + 1].start + 1;
+				tstr[i + 1].sam_line_start = tstr[i + 1].sam_line_start + 1;
 			}
 			if (i == opt.number_of_cores - 1)
 			{
 				adjust_ends[1] = max_sam_length[1];
 			}
-			tstr[i].start = adjust_ends[0];
-			tstr[i].end = adjust_ends[1];
-			tstr[i].thread_number = i;
-			tstr[i].max_sam_length = max_sam_length[0];
+			tstr[i].sam_line_start = adjust_ends[0];
+			tstr[i].sam_line_end = adjust_ends[1];
+			tstr[i].thread_index = i;
+			tstr[i].max_sam_line_length = max_sam_length[0];
 			j = j + divideFile;
 			free(adjust_ends);
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			printf("thread: %d start: %d end: %d\n", tstr[i].thread_number, tstr[i].start, tstr[i].end);
-			tstr[i].str->mismatch = (char **)malloc((tstr[i].end - tstr[i].start) * (sizeof(char *)));
-			for (k = 0; k < tstr[i].end - tstr[i].start; k++)
+			printf("thread: %d start: %d end: %d\n", tstr[i].thread_index, tstr[i].sam_line_start, tstr[i].sam_line_end);
+			tstr[i].results->mismatch = (char **)malloc((tstr[i].sam_line_end - tstr[i].sam_line_start) * (sizeof(char *)));
+			for (k = 0; k < tstr[i].sam_line_end - tstr[i].sam_line_start; k++)
 			{
-				tstr[i].str->mismatch[k] = (char *)malloc((max_sam_length[0] + 300000) * sizeof(char));
+				tstr[i].results->mismatch[k] = (char *)malloc((max_sam_length[0] + 300000) * sizeof(char));
 				for (l = 0; l < max_sam_length[0] + 300000; l++)
 				{
-					tstr[i].str->mismatch[k][l] = '\0';
+					tstr[i].results->mismatch[k][l] = '\0';
 				}
 			}
 		}
@@ -3530,13 +3782,13 @@ int main(int argc, char **argv)
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			for (j = 0; j < (tstr[i].end - tstr[i].start); j++)
+			for (j = 0; j < (tstr[i].sam_line_end - tstr[i].sam_line_start); j++)
 			{
-				if (tstr[i].str->mismatch[j][0] == '\0')
+				if (tstr[i].results->mismatch[j][0] == '\0')
 				{
 					break;
 				}
-				fprintf(outfile, "%s\n", tstr[i].str->mismatch[j]);
+				fprintf(outfile, "%s\n", tstr[i].results->mismatch[j]);
 			}
 		}
 		for (i = 0; i < max_sam_length[1]; i++)
@@ -3546,20 +3798,22 @@ int main(int argc, char **argv)
 		free(sam_results);
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			for (j = 0; j < tstr[i].end - tstr[i].start; j++)
+			for (j = 0; j < tstr[i].sam_line_end - tstr[i].sam_line_start; j++)
 			{
-				free(tstr[i].str->mismatch[j]);
+				free(tstr[i].results->mismatch[j]);
 			}
-			free(tstr[i].str->mismatch);
-			free(tstr[i].str);
+			free(tstr[i].results->mismatch);
+			free(tstr[i].results);
 		}
 	}
 	else if (opt.paired == 1 && opt.no_read_bam == 1)
 	{
+		// Paired-end, low-memory mode: single-threaded, streams the SAM file directly.
 		writeMismatchMatrix_paired_no_read_bam(outfile, sam_file, resize_MSA, length_of_MSA, number_of_strains, number_of_strains_remaining, resize_names_of_strains, reference_index);
 	}
 	else
 	{
+		// Single-end mode: no threading, no mate-pair overlap handling needed.
 		writeMismatchMatrix(outfile, sam_file, MSA, strains_kept, length_of_MSA, number_of_strains, number_of_strains_remaining);
 	}
 	fclose(outfile);

@@ -25,7 +25,8 @@ static struct option long_options[] =
 		{"print-deletions", required_argument, 0, 'r'},
 		{"clean-my-reads", no_argument, 0, 'd'},
 		{"bowtie2-alignment", required_argument, 0, 'B'},
-		{0, 0, 0, 0}};
+		{0, 0, 0, 0}
+	};
 
 char usage[] = "\neliminate_strains [OPTIONS]\n\
 	\n\
@@ -55,12 +56,23 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-B, --bowtie2-alignment [FILE]		bowtie2 reference\n\
 	\n";
 
+/**
+ * @brief Prints the help/usage text to CLI
+ * 
+ */
 void print_help_statement()
 {
 	printf("%s", &usage[0]);
 	return;
 }
 
+/**
+ * @brief Parses CLI arguments into an Options struct
+ * 
+ * @param argc arg count
+ * @param argv arg vector
+ * @param opt output options instance
+ */
 void parse_options(int argc, char **argv, Options *opt)
 {
 	int option_index, success;
