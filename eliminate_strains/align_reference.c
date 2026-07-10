@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "needleman_wunsch.h"
-#include "global.h"
+
+#include "align_reference.h"
 
 /**
  * @brief Aligns the MSA reference sequence to the Bowtie2 reference sequence and builds reference_index
@@ -13,25 +13,26 @@
  *
  * @param number_of_problematic_sites number of known problematic genome sites
  * @param problematic_sites list of known problematic genome sites
- * @param MSA_reference path to the MSA reference sequence file
- * @param opt options object
+ * @param MSA_reference_path path to the MSA reference file
+ * @param bowtie2_reference_path path to the Bowtie2 reference file
  */
-void align_references(int number_of_problematic_sites, int problematic_sites[], char MSA_reference[], Options opt)
+void align_references(int number_of_problematic_sites, int problematic_sites[], char *MSA_reference_path, char *bowtie2_reference_path)
 {
-	FILE *MSA_reference_file;
+	// read in MSA reference sequence
 	char *line = NULL;
 	size_t len = 0;
 	ssize_t read;
-	MSA_reference_file = fopen(MSA_reference, "r");
+	
+	FILE *MSA_reference_file = fopen(MSA_reference_path, "r");
 	if (MSA_reference_file == NULL)
 	{
 		printf("Error! Cannot open MSA reference file.");
 		exit(1);
 	}
 
-	char *MSA_reference_seq = (char *)malloc(30000 * sizeof(char));
+	char *MSA_reference_seq = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	int i, j;
-	for (i = 0; i < 30000; i++)
+	for (i = 0; i < FASTA_MAXLINE; i++)
 	{
 		MSA_reference_seq[i] = '\0';
 	}
@@ -46,27 +47,22 @@ void align_references(int number_of_problematic_sites, int problematic_sites[], 
 	fclose(MSA_reference_file);
 
 	// read in bowtie2 reference sequence
-	FILE *bowtie_reference_file;
-	char *bowtie_reference_path = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	memset(bowtie_reference_path, '\0', FASTA_MAXLINE);
-	sprintf(bowtie_reference_path, "%s", opt.bowtie2_reference);
-	bowtie_reference_file = fopen(bowtie_reference_path, "r");
-
-	if (bowtie_reference_file == NULL)
+	FILE *bowtie2_reference_file = fopen(bowtie2_reference_path, "r");
+	if (bowtie2_reference_file == NULL)
 	{
 		printf("Error! Cannot open bowtie2 reference file. Please make sure this file is in the current directory.");
 		exit(1);
 	}
-	char *bowtie_reference_seq = malloc(30000 * sizeof(char));
-	if (!bowtie_reference_seq)
+	char *bowtie2_reference_seq = malloc(FASTA_MAXLINE * sizeof(char));
+	if (!bowtie2_reference_seq)
 	{
 		fprintf(stderr, "Memory allocation failed\n");
 	}
 
-	bowtie_reference_seq[0] = '\0'; // initialize as empty string
-	char line2[10024]; // FIXME: Magic number?
+	bowtie2_reference_seq[0] = '\0'; // initialize as empty string
+	char line2[FASTA_MAXLINE];
 
-	while (fgets(line2, sizeof(line2), bowtie_reference_file))
+	while (fgets(line2, sizeof(line2), bowtie2_reference_file))
 	{
 		if (line2[0] == '>')
 		{
@@ -75,43 +71,12 @@ void align_references(int number_of_problematic_sites, int problematic_sites[], 
 		}
 		// strip newline
 		line2[strcspn(line2, "\r\n")] = '\0';
-		strcat(bowtie_reference_seq, line2);
+		strcat(bowtie2_reference_seq, line2);
 	}
 
-	fclose(bowtie_reference_file);
+	fclose(bowtie2_reference_file);
 
-	// FIXME: Not sure what this block of code does
-	// char *Wuhan = (char *)malloc(29903 * sizeof(char));
-	// for (i = 0; i < 29903; i++)
-	// {
-	// 	Wuhan[i] = '\0';
-	// }
-	// /*while((read=getline(&line, &len, Wuhan_file)) != -1){
-	// 	j=strlen(line);
-	// 	for(i=0; i<j; i++){
-	// 		Wuhan[i]=line[i];
-	// 	}
-	// }
-	// fclose(Wuhan_file);*/
-	// if (access("reference.fasta", F_OK) == 0)
-	// {
-	// 	printf("reference file exists not writing a new file...\n");
-	// }
-	// else
-	// {
-	// 	FILE *Wuhan_file;
-	// 	if ((Wuhan_file = fopen("MN908947.fasta", "w")) == (FILE *)NULL)
-	// 		fprintf(stderr, "Wuhan Reference File could not be opened for writing.\n");
-	// 	fprintf(Wuhan_file, ">MN908947.3\n");
-	// 	for (i = 0; i < 29903; i++)
-	// 	{
-	// 		fprintf(Wuhan_file, "%c", Wuhan[i]);
-	// 	}
-	// 	fprintf(Wuhan_file, "\n");
-	// 	fclose(Wuhan_file);
-	// }
-
-	// use needlman wunsch alignment
+	// use needleman-wunsch alignment
 	nw_aligner_t *nw = needleman_wunsch_new();
 	alignment_t *result = alignment_create(256);
 	int match = 1;
@@ -125,7 +90,7 @@ void align_references(int number_of_problematic_sites, int problematic_sites[], 
 	char case_sensitive = 0;
 	scoring_t scoring;
 	scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
-	needleman_wunsch_align(MSA_reference_seq, bowtie_reference_seq, &scoring, nw, result);
+	needleman_wunsch_align(MSA_reference_seq, bowtie2_reference_seq, &scoring, nw, result);
 	printf("seqA: %s\n", result->result_a);
 	printf("seqB: %s\n", result->result_b);
 	printf("alignment score: %i\n", result->score);
@@ -162,7 +127,8 @@ void align_references(int number_of_problematic_sites, int problematic_sites[], 
 	}
 
 	free(MSA_reference_seq);
-	// free(Wuhan);
+	free(bowtie2_reference_seq);
+	free(line);
 	needleman_wunsch_free(nw);
 	alignment_free(result);
 }

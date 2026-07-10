@@ -7,13 +7,51 @@
 #include <assert.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <dirent.h>
+
 #include "global.h"
 #include "options.h"
+#include "align_reference.h"
 
 char **resize_MSA;
 char **resize_names_of_strains;
 int *reference_index;
 char **sam_results;
+
+/**
+ * @brief Classify a SAM FLAG value's read-pair role by inspecting specific bits.
+ * @param n The SAM FLAG field value.
+ * @return -1 if unmapped (bit 2 set); 2 if "not paired" (bit 3 set); otherwise
+ * bit 6 of the flag: 1 = first read in pair, 0 = second read in pair.
+ * @note Despite the name, this does not convert to a binary string. It extracts
+ * specific SAM flag bits to answer "which mate is this?".
+ */
+int dec2bin(int n)
+{
+	int binaryNum[32];
+	int i = 0;
+	while (n > 0)
+	{
+		binaryNum[i] = n % 2;
+		n = n / 2;
+		i++;
+	}
+	if (binaryNum[2] == 1)
+	{
+		return -1;
+	}
+	else if (binaryNum[3] == 1)
+	{
+		// unpaired
+		return 2;
+	}
+	else
+	{
+		// if 1 this is first pair, if 0 this is second pair
+		return binaryNum[6];
+	}
+}
+
 /**
  * @brief Determine the MSA's alignment width (number of columns) from the first entry.
  * @param MSA_file Open gzipped MSA FASTA file, positioned at the start.
@@ -55,22 +93,22 @@ void setNumStrains(gzFile MSA_file, int *strain_info)
 {
 	char buffer[FASTA_MAXLINE];
 	int i = 0;
-	int numstrains = 0;
-	int maxname = 0;
+	int num_strains = 0;
+	int max_name = 0;
 	while (gzgets(MSA_file, buffer, FASTA_MAXLINE) != NULL)
 	{
 		if (buffer[0] == '>')
 		{
 			int length = strlen(buffer) - 1;
-			if (length > maxname)
+			if (length > max_name)
 			{
-				maxname = length;
+				max_name = length;
 			}
-			numstrains++;
+			num_strains++;
 		}
 	}
-	strain_info[0] = numstrains;
-	strain_info[1] = maxname;
+	strain_info[0] = num_strains;
+	strain_info[1] = max_name;
 }
 
 /**
@@ -89,7 +127,7 @@ void setNumStrains(gzFile MSA_file, int *strain_info)
  * @note The hardcoded name list is SARS-CoV-2-era; needs updating (or a config-driven
  * replacement) for influenza reference strains.
  */
-int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA)
+int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA, char *reference_name)
 {
 	char buffer[FASTA_MAXLINE];
 	int i = 0;
@@ -106,30 +144,10 @@ int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA)
 				names[index][i - 1] = buffer[i];
 			}
 			names[index][i - 1] = '\0';
-			if (strcmp(names[index], "NC_045512v2") == 0)
+			if (strcmp(names[index], reference_name) == 0)
 			{
 				found_ref = 1;
 			}
-			if (strcmp(names[index], "hCoV-19/Wuhan/WIV04/2019|EPI_ISL_402124|2019-12-30|China") == 0)
-			{
-				found_ref = 1;
-			}
-			// if (strcmp(names[index],"A/New_York/PV153865/2024_EPI_ISL_19407925_pdm09_6B.1A.5a.2a.1_MP_68396_PV153865_MP_EPI3554131")==0){
-			//	found_ref=1;
-			// }
-			// if (strcmp(names[index],"A/black-headed_gull/Leningrad_region/RII-WD319M/2023_EPI_ISL_19407925_2.3.4.4b_MP_A/black-headed_gull/Leningrad_region/RII-WD319M/2023_EPI2691318")==0){
-			//	found_ref=1;
-			// }
-			// if (strcmp(names[index],"EPI_ISL_19407925")==0){
-			//	found_ref=1;
-			// }
-			if (strcmp(names[index], "EPI_ISL_19407925") == 0)
-			{
-				found_ref = 1;
-			}
-			// if (strcmp(names[index],"A/South_Africa/K056869/2023_EPI_ISL_18147004_3C.2a1b.2a.2a.3a.1_MP_A/South_Africa/K056869/2023_EPI2718577")==0){
-			//	found_ref=1;
-			// }
 		}
 		else
 		{
@@ -183,65 +201,18 @@ int readInMSA(gzFile MSA_file, char **MSA, char **names, int length_of_MSA)
 }
 
 /**
- * @brief Replace -1 (missing) entries in a numerically-coded MSA with each site's majority allele.
- * @param number_of_strains Number of rows in MSA.
- * @param length_of_MSA Number of columns in MSA.
- * @param MSA Numerically-coded alignment (0-3 = base, -1 = missing), modified in place.
- * @param imputation Per-site majority-allele code, from findMaxAllele().
- * @note Not currently called from main() (the call site is commented out).
- */
-void imputeNucMat(int number_of_strains, int length_of_MSA, int **MSA, int *imputation)
-{
-	int i, j;
-	for (i = 0; i < number_of_strains; i++)
-	{
-		for (j = 0; j < length_of_MSA; j++)
-		{
-			if (MSA[i][j] == -1)
-			{
-				MSA[i][j] = imputation[j] + 1;
-			}
-		}
-	}
-}
-
-/**
- * @brief Find the most frequent allele at each MSA site, for imputeNucMat().
- * @param length_of_MSA Number of sites.
- * @param allele_frequency Per-site counts of each of the 4 bases.
- * @param imputation Output: per-site majority-allele code (0-3).
- * @note Not currently called from main().
- */
-void findMaxAllele(int length_of_MSA, int **allele_frequency, int *imputation)
-{
-	int i, j;
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		int max = 0;
-		int max_index = 0;
-		for (j = 0; j < 4; j++)
-		{
-			if (allele_frequency[i][j] > max)
-			{
-				max = allele_frequency[i][j];
-				max_index = j;
-			}
-		}
-		imputation[i] = max_index;
-	}
-}
-
-/**
  * @brief Find strains with identical sequences and blank out the duplicates' names.
+ * 
  * @param number_of_strains Number of rows in MSA.
  * @param length_of_MSA Number of columns in MSA.
  * @param MSA Numerically-coded alignment.
  * @param identical Scratch/output array of duplicate row indices (-1-terminated on input).
  * @param names_of_strains Strain names; duplicates get their name blanked ('\0').
  * @param maxname Length of each name buffer in names_of_strains.
+ * 
  * @return Number of strains remaining after removing duplicates.
- * @note Not currently invoked -- no CLI flag sets opt.remove_identical, so this
- * path is never reached from main().
+ * 
+ * @note Not currently invoked -- no CLI flag sets opt.remove_identical, so this path is never reached from main().
  */
 int removeIdenticalStrains(int number_of_strains, int length_of_MSA, int **MSA, int *identical, char **names_of_strains, int maxname)
 {
@@ -379,6 +350,7 @@ int removeIdenticalStrains(int number_of_strains, int length_of_MSA, int **MSA, 
  * @param max_sam_length Output: [0] = longest raw SAM line seen, [1] = number of SAM records.
  * @param print_deletions If non-empty, path to dump sites with deletion frequency above threshold.
  * @param deletion_threshold Frequency threshold for reporting a deletion site.
+ * 
  * @return Number of strains remaining after elimination.
  */
 int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold)
@@ -1480,40 +1452,6 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 }
 
 /**
- * @brief Classify a SAM FLAG value's read-pair role by inspecting specific bits.
- * @param n The SAM FLAG field value.
- * @return -1 if unmapped (bit 2 set); 2 if "not paired" (bit 3 set); otherwise
- * bit 6 of the flag: 1 = first read in pair, 0 = second read in pair.
- * @note Despite the name, this does not convert to a binary string -- it extracts
- * specific SAM flag bits to answer "which mate is this?".
- */
-int dec2bin(int n)
-{
-	int binaryNum[32];
-	int i = 0;
-	while (n > 0)
-	{
-		binaryNum[i] = n % 2;
-		n = n / 2;
-		i++;
-	}
-	if (binaryNum[2] == 1)
-	{
-		return -1;
-	}
-	else if (binaryNum[3] == 1)
-	{
-		// unpaired
-		return 2;
-	}
-	else
-	{
-		// if 1 this is first pair, if 0 this is second pair
-		return binaryNum[6];
-	}
-}
-
-/**
  * @brief Thread worker: build mismatch-matrix rows for this thread's slice of the
  * preloaded SAM lines (global `sam_results`).
  *
@@ -1521,21 +1459,21 @@ int dec2bin(int n)
  * panel) at every aligned position, avoiding double-counting bases covered by
  * both mates of a pair (see the `visited` array). Formats one output row per
  * read pair as "readname\\talignment_size\\tmismatch_count...", written into
- * this thread's ThreadStruct.results.
+ * this thread's ThreadStruct.results_str.
  *
  * @param ptr Pointer to this thread's ThreadStruct (cast internally).
- * @return NULL always; real output is written into ptr->results, not returned.
+ * @return NULL always; real output is written into ptr->results_str, not returned.
  */
 void *writeMismatchMatrix_paired(void *ptr)
 {
 	int i, j, k;
-	struct ThreadStruct *tstr = (ThreadStruct *)ptr;
-	ResultsStruct *results = tstr->results;
-	int max_sam_length = tstr->max_sam_line_length;
-	int length_of_MSA = tstr->length_of_MSA;
-	int number_of_strains = tstr->number_of_strains;
-	int number_of_strains_remaining = tstr->number_of_strains_remaining;
-	int thread_number = tstr->thread_index;
+	struct ThreadStruct *thread_str = (ThreadStruct *)ptr;
+	ResultsStruct *results_str = thread_str->results_str;
+	int max_sam_line_length = thread_str->max_sam_line_length;
+	int length_of_MSA = thread_str->length_of_MSA;
+	int number_of_strains = thread_str->number_of_strains;
+	int number_of_strains_remaining = thread_str->number_of_strains_remaining;
+	int thread_index = thread_str->thread_index;
 	char buffer[FASTA_MAXLINE];
 	char *s;
 	int cigar[MAX_CIGAR];
@@ -1565,10 +1503,10 @@ void *writeMismatchMatrix_paired(void *ptr)
 	int line_number = 0;
 	// while( fgets(buffer,FASTA_MAXLINE,samfile) != NULL ){
 	int line_count;
-	char *resultsPath = (char *)malloc((max_sam_length + 300000) * sizeof(char));
+	char *resultsPath = (char *)malloc((max_sam_line_length + 300000) * sizeof(char));
 	int index_mismatch = 0;
 	char *context = NULL;
-	for (line_count = tstr->sam_line_start; line_count < tstr->sam_line_end; line_count++)
+	for (line_count = thread_str->sam_line_start; line_count < thread_str->sam_line_end; line_count++)
 	{
 		line_number++;
 		char *buffer_copy = strdup(sam_results[line_count]);
@@ -1580,7 +1518,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 		decimal = dec2bin(decimal);
 		if (decimal == 1)
 		{
-			for (i = 0; i < max_sam_length + 300000; i++)
+			for (i = 0; i < max_sam_line_length + 300000; i++)
 			{
 				resultsPath[i] = '\0';
 			}
@@ -1594,7 +1532,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 		}
 		if (decimal == 2)
 		{
-			for (i = 0; i < max_sam_length + 300000; i++)
+			for (i = 0; i < max_sam_line_length + 300000; i++)
 			{
 				resultsPath[i] = '\0';
 			}
@@ -2028,7 +1966,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 				free(num2);
 			}
 			// fprintf(outfile,"\n");
-			strcpy(results->mismatch[index_mismatch], resultsPath);
+			strcpy(results_str->mismatch[index_mismatch], resultsPath);
 			index_mismatch++;
 		}
 		free(buffer_copy);
@@ -2036,6 +1974,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 		second_in_pair = 0;
 	}
 	free(number_of_mismatches);
+	return NULL;
 }
 
 /**
@@ -2793,38 +2732,6 @@ void readReferencePositionsFile(FILE *file, int *reference)
 	}
 }
 
-/**
- * @brief Find the last non-'A' position before the reference's trailing poly-A tail.
- * @param MSA Strain panel.
- * @param length_of_MSA Number of MSA columns (unused directly; loop uses `reference`).
- * @param ref_index Row index of the reference strain in MSA.
- * @param reference Ungapped-position lookup array (see readReferencePositionsFile()).
- * @return MSA column of the last non-'A' base before the poly-A tail.
- * @note Dead code: its only call site (in main()) is commented out.
- */
-int findEndOfPolyA(char **MSA, int length_of_MSA, int ref_index, int *reference)
-{
-	int i;
-	int length_of_ref = 0;
-	int end_of_polyA = reference[length_of_ref - 1];
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		if (reference[i] == -1)
-		{
-			length_of_ref = i;
-			break;
-		}
-	}
-	for (i = length_of_ref - 2; i >= 0; i--)
-	{
-		if (MSA[ref_index][reference[i]] != 'A')
-		{
-			end_of_polyA = reference[i];
-			break;
-		}
-	}
-	return end_of_polyA;
-}
 /*int process_problematic_sites(int* problematic_sites){
 	FILE* file;
 	if (( file = fopen("problematic_sites_sarsCov2.vcf","r")) == (FILE *) NULL ) fprintf(stderr, "Problematic Sites File could not be opened.\n");
@@ -2848,6 +2755,7 @@ int findEndOfPolyA(char **MSA, int length_of_MSA, int ref_index, int *reference)
 	fclose(file);
 	return i;
 }*/
+
 /**
  * @brief Copy the strains that survived elimination into the pre-sized
  * global resize_MSA/resize_names_of_strains buffers, then free the originals.
@@ -2942,6 +2850,7 @@ void adjust_start_end(int start, int end, int *return_arr, int max_sam_length)
 	}
 	free(buffer_copy);
 }
+
 /**
  * @brief Trim 15bp off each end of every read in a FASTQ file.
  * @param filename Base filename; reads "<filename>_trimmed1.fastq", writes
@@ -3113,38 +3022,46 @@ void trim_ends_fasta(char filename[])
  * @brief Quality-trim and end-trim the input reads (single-end or paired), in place.
  *
  * For FASTQ input, runs `fastq_quality_trimmer` then trim_ends_fastq(); for
- * FASTA input, just runs trim_ends_fasta(). Updates opt's read-file path(s)
- * to point at the trimmed output.
- * @param opt CLI options; read file paths are read and rewritten in place.
+ * FASTA input, just runs trim_ends_fasta(). Rewrites single_end_file (or
+ * forward_end_file/reverse_end_file) to point at the trimmed output --
+ * since these are caller-owned buffers passed by pointer, the caller sees
+ * the update (unlike the previous Options-by-value version, where this
+ * rewrite was silently lost on return).
+ * 
+ * @param paired 1 if using paired-end reads.
+ * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
+ * @param single_end_file Single-end reads path; rewritten in place if paired == 0.
+ * @param forward_end_file Forward reads path; rewritten in place if paired == 1.
+ * @param reverse_end_file Reverse reads path; rewritten in place if paired == 1.
  */
-void clean_reads(Options opt)
+void clean_reads(int paired, int fasta_format, char *single_end_file, char *forward_end_file, char *reverse_end_file)
 {
 	int i;
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
-	if (opt.paired == 0)
+	if (paired == 0)
 	{
 		char *prefix;
-		if (opt.single_end_file[strlen(opt.single_end_file) - 6] == '.' && opt.single_end_file[strlen(opt.single_end_file) - 5] == 'f' && opt.single_end_file[strlen(opt.single_end_file) - 4] == 'a' && opt.single_end_file[strlen(opt.single_end_file) - 3] == 's' && opt.single_end_file[strlen(opt.single_end_file) - 2] == 't' && (opt.single_end_file[strlen(opt.single_end_file) - 1] == 'q' || opt.single_end_file[strlen(opt.single_end_file) - 1] == 'a'))
+		if (single_end_file[strlen(single_end_file) - 6] == '.' && single_end_file[strlen(single_end_file) - 5] == 'f' && single_end_file[strlen(single_end_file) - 4] == 'a' && single_end_file[strlen(single_end_file) - 3] == 's' && single_end_file[strlen(single_end_file) - 2] == 't' && (single_end_file[strlen(single_end_file) - 1] == 'q' || single_end_file[strlen(single_end_file) - 1] == 'a'))
 		{
-			prefix = (char *)malloc((strlen(opt.single_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.single_end_file) - 6; i++)
+			prefix = (char *)malloc((strlen(single_end_file) - 6 + 15) * sizeof(char));
+			for (i = 0; i < strlen(single_end_file) - 6; i++)
 			{
-				prefix[i] = opt.single_end_file[i];
+				prefix[i] = single_end_file[i];
 			}
-			for (i = strlen(opt.single_end_file) - 6; i < strlen(opt.single_end_file) - 6 + 15; i++)
+			for (i = strlen(single_end_file) - 6; i < strlen(single_end_file) - 6 + 15; i++)
 			{
 				prefix[i] = '\0';
 			}
 		}
-		else if (opt.single_end_file[strlen(opt.single_end_file) - 3] == '.' && opt.single_end_file[strlen(opt.single_end_file) - 2] == 'f' && (opt.single_end_file[strlen(opt.single_end_file) - 1] == 'q' || opt.single_end_file[strlen(opt.single_end_file) - 1] == 'a'))
+		else if (single_end_file[strlen(single_end_file) - 3] == '.' && single_end_file[strlen(single_end_file) - 2] == 'f' && (single_end_file[strlen(single_end_file) - 1] == 'q' || single_end_file[strlen(single_end_file) - 1] == 'a'))
 		{
-			prefix = (char *)malloc((strlen(opt.single_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.single_end_file) - 3; i++)
+			prefix = (char *)malloc((strlen(single_end_file) - 3 + 15) * sizeof(char));
+			for (i = 0; i < strlen(single_end_file) - 3; i++)
 			{
-				prefix[i] = opt.single_end_file[i];
+				prefix[i] = single_end_file[i];
 			}
-			for (i = strlen(opt.single_end_file) - 3; i < strlen(opt.single_end_file) - 3 + 15; i++)
+			for (i = strlen(single_end_file) - 3; i < strlen(single_end_file) - 3 + 15; i++)
 			{
 				prefix[i] = '\0';
 			}
@@ -3154,9 +3071,9 @@ void clean_reads(Options opt)
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		if (opt.fasta_format == 0)
+		if (fasta_format == 0)
 		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", opt.single_end_file, prefix);
+			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", single_end_file, prefix);
 			system(buffer);
 			trim_ends_fastq(prefix);
 		}
@@ -3164,12 +3081,12 @@ void clean_reads(Options opt)
 		{
 			trim_ends_fasta(prefix);
 		}
-		// sprintf(buffer, "fastx_trimmer -m 65 -t 15 -i %s_trimmed1.fastq -o %s_trimmed2.fastq",opt.single_end_file,prefix);
+		// sprintf(buffer, "fastx_trimmer -m 65 -t 15 -i %s_trimmed1.fastq -o %s_trimmed2.fastq",single_end_file,prefix);
 		// system(buffer);
-		// sprintf(buffer, "fastx_trimmer -f 15 -i %s_trimmed2.fastq -o %s_trimmed3.fastq",opt.single_end_file,prefix);
+		// sprintf(buffer, "fastx_trimmer -f 15 -i %s_trimmed2.fastq -o %s_trimmed3.fastq",single_end_file,prefix);
 		// system(buffer);
 		char suffix[1000];
-		if (opt.fasta_format == 0)
+		if (fasta_format == 0)
 		{
 			strcpy(suffix, "_trimmed2.fastq");
 		}
@@ -3178,32 +3095,32 @@ void clean_reads(Options opt)
 			strcpy(suffix, "_trimmed2.fasta");
 		}
 		strcat(prefix, suffix);
-		strcpy(opt.single_end_file, prefix);
+		strcpy(single_end_file, prefix);
 		free(prefix);
 	}
 	else
 	{
 		char *prefix_forward;
-		if (opt.forward_end_file[strlen(opt.forward_end_file) - 6] == '.' && opt.forward_end_file[strlen(opt.forward_end_file) - 5] == 'f' && opt.forward_end_file[strlen(opt.forward_end_file) - 4] == 'a' && opt.forward_end_file[strlen(opt.forward_end_file) - 3] == 's' && opt.forward_end_file[strlen(opt.forward_end_file) - 2] == 't' && (opt.forward_end_file[strlen(opt.forward_end_file) - 1] == 'q' || opt.forward_end_file[strlen(opt.forward_end_file) - 1] == 'a'))
+		if (forward_end_file[strlen(forward_end_file) - 6] == '.' && forward_end_file[strlen(forward_end_file) - 5] == 'f' && forward_end_file[strlen(forward_end_file) - 4] == 'a' && forward_end_file[strlen(forward_end_file) - 3] == 's' && forward_end_file[strlen(forward_end_file) - 2] == 't' && (forward_end_file[strlen(forward_end_file) - 1] == 'q' || forward_end_file[strlen(forward_end_file) - 1] == 'a'))
 		{
-			prefix_forward = (char *)malloc((strlen(opt.forward_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.forward_end_file) - 6; i++)
+			prefix_forward = (char *)malloc((strlen(forward_end_file) - 6 + 15) * sizeof(char));
+			for (i = 0; i < strlen(forward_end_file) - 6; i++)
 			{
-				prefix_forward[i] = opt.forward_end_file[i];
+				prefix_forward[i] = forward_end_file[i];
 			}
-			for (i = strlen(opt.forward_end_file) - 6; i < strlen(opt.forward_end_file) - 6 + 15; i++)
+			for (i = strlen(forward_end_file) - 6; i < strlen(forward_end_file) - 6 + 15; i++)
 			{
 				prefix_forward[i] = '\0';
 			}
 		}
-		else if (opt.forward_end_file[strlen(opt.forward_end_file) - 3] == '.' && opt.forward_end_file[strlen(opt.forward_end_file) - 2] == 'f' && (opt.forward_end_file[strlen(opt.forward_end_file) - 1] == 'q' || opt.forward_end_file[strlen(opt.forward_end_file) - 1] == 'a'))
+		else if (forward_end_file[strlen(forward_end_file) - 3] == '.' && forward_end_file[strlen(forward_end_file) - 2] == 'f' && (forward_end_file[strlen(forward_end_file) - 1] == 'q' || forward_end_file[strlen(forward_end_file) - 1] == 'a'))
 		{
-			prefix_forward = (char *)malloc((strlen(opt.forward_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.forward_end_file) - 3; i++)
+			prefix_forward = (char *)malloc((strlen(forward_end_file) - 3 + 15) * sizeof(char));
+			for (i = 0; i < strlen(forward_end_file) - 3; i++)
 			{
-				prefix_forward[i] = opt.forward_end_file[i];
+				prefix_forward[i] = forward_end_file[i];
 			}
-			for (i = strlen(opt.forward_end_file) - 3; i < strlen(opt.forward_end_file) - 3 + 15; i++)
+			for (i = strlen(forward_end_file) - 3; i < strlen(forward_end_file) - 3 + 15; i++)
 			{
 				prefix_forward[i] = '\0';
 			}
@@ -3213,9 +3130,9 @@ void clean_reads(Options opt)
 			printf("Your reads don't end with .fastq, .fasta, .fa or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		if (opt.fasta_format == 0)
+		if (fasta_format == 0)
 		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", opt.forward_end_file, prefix_forward);
+			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", forward_end_file, prefix_forward);
 			system(buffer);
 			trim_ends_fastq(prefix_forward);
 		}
@@ -3224,7 +3141,7 @@ void clean_reads(Options opt)
 			trim_ends_fasta(prefix_forward);
 		}
 		char suffix[1000];
-		if (opt.fasta_format == 0)
+		if (fasta_format == 0)
 		{
 			strcpy(suffix, "_trimmed2.fastq");
 		}
@@ -3233,29 +3150,29 @@ void clean_reads(Options opt)
 			strcpy(suffix, "_trimmed2.fasta");
 		}
 		strcat(prefix_forward, suffix);
-		strcpy(opt.forward_end_file, prefix_forward);
+		strcpy(forward_end_file, prefix_forward);
 		free(prefix_forward);
 		char *prefix_reverse;
-		if (opt.reverse_end_file[strlen(opt.reverse_end_file) - 6] == '.' && opt.reverse_end_file[strlen(opt.reverse_end_file) - 5] == 'f' && opt.reverse_end_file[strlen(opt.reverse_end_file) - 4] == 'a' && opt.reverse_end_file[strlen(opt.reverse_end_file) - 3] == 's' && opt.reverse_end_file[strlen(opt.reverse_end_file) - 2] == 't' && (opt.reverse_end_file[strlen(opt.reverse_end_file) - 1] == 'q' || opt.reverse_end_file[strlen(opt.reverse_end_file) - 1] == 'a'))
+		if (reverse_end_file[strlen(reverse_end_file) - 6] == '.' && reverse_end_file[strlen(reverse_end_file) - 5] == 'f' && reverse_end_file[strlen(reverse_end_file) - 4] == 'a' && reverse_end_file[strlen(reverse_end_file) - 3] == 's' && reverse_end_file[strlen(reverse_end_file) - 2] == 't' && (reverse_end_file[strlen(reverse_end_file) - 1] == 'q' || reverse_end_file[strlen(reverse_end_file) - 1] == 'a'))
 		{
-			prefix_reverse = (char *)malloc((strlen(opt.reverse_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.reverse_end_file) - 6; i++)
+			prefix_reverse = (char *)malloc((strlen(reverse_end_file) - 6 + 15) * sizeof(char));
+			for (i = 0; i < strlen(reverse_end_file) - 6; i++)
 			{
-				prefix_reverse[i] = opt.reverse_end_file[i];
+				prefix_reverse[i] = reverse_end_file[i];
 			}
-			for (i = strlen(opt.reverse_end_file) - 6; i < strlen(opt.reverse_end_file) - 6 + 15; i++)
+			for (i = strlen(reverse_end_file) - 6; i < strlen(reverse_end_file) - 6 + 15; i++)
 			{
 				prefix_reverse[i] = '\0';
 			}
 		}
-		else if (opt.reverse_end_file[strlen(opt.reverse_end_file) - 3] == '.' && opt.reverse_end_file[strlen(opt.reverse_end_file) - 2] == 'f' && (opt.reverse_end_file[strlen(opt.reverse_end_file) - 1] == 'q' || opt.reverse_end_file[strlen(opt.reverse_end_file) - 1] == 'a'))
+		else if (reverse_end_file[strlen(reverse_end_file) - 3] == '.' && reverse_end_file[strlen(reverse_end_file) - 2] == 'f' && (reverse_end_file[strlen(reverse_end_file) - 1] == 'q' || reverse_end_file[strlen(reverse_end_file) - 1] == 'a'))
 		{
-			prefix_reverse = (char *)malloc((strlen(opt.reverse_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(opt.reverse_end_file) - 3; i++)
+			prefix_reverse = (char *)malloc((strlen(reverse_end_file) - 3 + 15) * sizeof(char));
+			for (i = 0; i < strlen(reverse_end_file) - 3; i++)
 			{
-				prefix_reverse[i] = opt.reverse_end_file[i];
+				prefix_reverse[i] = reverse_end_file[i];
 			}
-			for (i = strlen(opt.reverse_end_file) - 3; i < strlen(opt.reverse_end_file) - 3 + 15; i++)
+			for (i = strlen(reverse_end_file) - 3; i < strlen(reverse_end_file) - 3 + 15; i++)
 			{
 				prefix_reverse[i] = '\0';
 			}
@@ -3265,9 +3182,9 @@ void clean_reads(Options opt)
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		if (opt.fasta_format == 0)
+		if (fasta_format == 0)
 		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", opt.reverse_end_file, prefix_reverse);
+			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", reverse_end_file, prefix_reverse);
 			system(buffer);
 			trim_ends_fastq(prefix_reverse);
 		}
@@ -3276,89 +3193,106 @@ void clean_reads(Options opt)
 			trim_ends_fasta(prefix_reverse);
 		}
 		strcat(prefix_reverse, suffix);
-		strcpy(opt.reverse_end_file, prefix_reverse);
+		strcpy(reverse_end_file, prefix_reverse);
 		free(prefix_reverse);
 	}
 }
+
 /**
- * @brief Build the Bowtie2 index (if missing) and run Bowtie2 to produce opt.sam.
- * @param opt CLI options: read files, reference, paired/fasta_format flags, output SAM path.
+ * @brief Build the Bowtie2 index (if missing) and run Bowtie2 to produce sam_path.
+ * @param paired 1 if using paired-end reads.
+ * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
+ * @param bowtie_reference_path Path to the reference genome to build/align against.
+ * @param forward_end_file Forward reads path (paired mode).
+ * @param reverse_end_file Reverse reads path (paired mode).
+ * @param single_end_file Single-end reads path.
+ * @param sam_path Output SAM file path.
  */
-void perform_bowtie_alignment(Options opt)
+void perform_bowtie_alignment(int paired, int fasta_format, char *bowtie_reference_path, char *forward_end_file, char *reverse_end_file, char *single_end_file, char *sam_path)
 {
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
+	// FIXME: Not sure if we should keep this check but make it unhardcoded or not
 	if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
 	{
 		printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2-build -f %s %s", opt.bowtie2_reference, opt.bowtie2_reference);
+		sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
 		system(buffer);
 	}
-	if (opt.paired == 1 && opt.fasta_format == 1)
+	if (paired == 1 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -1 %s -2 %s -S %s", opt.bowtie2_reference, opt.forward_end_file, opt.reverse_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 0 && opt.fasta_format == 1)
+	else if (paired == 0 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -U %s -S %s", opt.bowtie2_reference, opt.single_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 1 && opt.fasta_format == 0)
+	else if (paired == 1 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -1 %s -2 %s -S %s", opt.bowtie2_reference, opt.forward_end_file, opt.reverse_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 0 && opt.fasta_format == 0)
+	else if (paired == 0 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -U %s -S %s", opt.bowtie2_reference, opt.single_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	free(buffer);
 }
+
 /**
  * @brief Same as perform_bowtie_alignment(), but with --xeq (extended CIGAR,
  * distinguishing '=' match from 'X' mismatch), used only for error-rate estimation.
- * @param opt CLI options: read files, reference, paired/fasta_format flags, output SAM path.
+ * @param paired 1 if using paired-end reads.
+ * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
+ * @param bowtie_reference_path Path to the reference genome to build/align against.
+ * @param forward_end_file Forward reads path (paired mode).
+ * @param reverse_end_file Reverse reads path (paired mode).
+ * @param single_end_file Single-end reads path.
+ * @param sam_path Output SAM file path.
  */
-void perform_bowtie_alignment_xeq(Options opt)
+void perform_bowtie_alignment_xeq(int paired, int fasta_format, char *bowtie_reference_path, char *forward_end_file, char *reverse_end_file, char *single_end_file, char *sam_path)
 {
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
+	// FIXME: Not sure if we should keep this check but make it unhardcoded or not
 	if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
 	{
 		printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2-build -f %s %s", opt.bowtie2_reference, opt.bowtie2_reference);
+		sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
 		system(buffer);
 	}
-	if (opt.paired == 1 && opt.fasta_format == 1)
+	if (paired == 1 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -1 %s -2 %s -S %s", opt.bowtie2_reference, opt.forward_end_file, opt.reverse_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 0 && opt.fasta_format == 1)
+	else if (paired == 0 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -U %s -S %s", opt.bowtie2_reference, opt.single_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 1 && opt.fasta_format == 0)
+	else if (paired == 1 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -1 %s -2 %s -S %s", opt.bowtie2_reference, opt.forward_end_file, opt.reverse_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
-	else if (opt.paired == 0 && opt.fasta_format == 0)
+	else if (paired == 0 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -U %s -S %s", opt.bowtie2_reference, opt.single_end_file, opt.sam);
+		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	free(buffer);
 }
+
 /**
  * @brief Estimate whether reads need quality/end trimming, from an --xeq SAM file.
  *
@@ -3474,6 +3408,107 @@ int calculate_error_rates(char sam_file[])
 	}
 	return invoke_cleaning;
 }
+
+/** @brief qsort comparator for sorting an array of C strings alphabetically. */
+int cmp_str(const void *a, const void *b)
+{
+	return strcmp(*(const char **)a, *(const char **)b);
+}
+
+/**
+ * @brief Read the strain name from the header line of a single-sequence FASTA file.
+ * @param fasta_path Path to a FASTA file whose first line is ">strain_name".
+ * @return Newly allocated string with the header's name (no '>', no newline).
+ */
+char *read_fasta_header_name(char *fasta_path)
+{
+	FILE *file = fopen(fasta_path, "r");
+	if (file == NULL)
+	{
+		fprintf(stderr, "Error: could not open reference file '%s' to read its name\n", fasta_path);
+		exit(1);
+	}
+	char buffer[FASTA_MAXLINE];
+	if (fgets(buffer, FASTA_MAXLINE, file) == NULL || buffer[0] != '>')
+	{
+		fprintf(stderr, "Error: '%s' does not start with a FASTA header line\n", fasta_path);
+		exit(1);
+	}
+	fclose(file);
+	buffer[strcspn(buffer, "\r\n")] = '\0';
+	return strdup(buffer + 1); // skip the leading '>'
+}
+
+/**
+ * @brief List the first `num_references` regular files in a directory, sorted
+ * alphabetically, as full paths.
+ *
+ * Used to line up the Nth file across msa/reference/variant directories as
+ * belonging to the same subtype (see main()). Exits the program with an
+ * error if the directory has fewer than num_references usable files.
+ *
+ * @param dir_path Directory to scan.
+ * @param num_references Number of files required (and returned).
+ * @param dir_label Human-readable label for this directory, used in error messages.
+ * @return Newly allocated array of num_references newly allocated path strings
+ * (caller owns both the array and each string).
+ */
+char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label)
+{
+	DIR *dir = opendir(dir_path);
+	if (dir == NULL)
+	{
+		fprintf(stderr, "Error: could not open %s directory '%s'\n", dir_label, dir_path);
+		exit(1);
+	}
+ 
+	char **filenames = NULL;
+	int count = 0;
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL)
+	{
+		if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+		{
+			continue;
+		}
+		filenames = (char **)realloc(filenames, (count + 1) * sizeof(char *));
+		filenames[count] = strdup(entry->d_name);
+		count++;
+	}
+	closedir(dir);
+ 
+	if (count < num_references)
+	{
+		fprintf(stderr, "Error: %s directory '%s' has %d file(s), but %d reference(s) were requested (-N).\n", dir_label, dir_path, count, num_references);
+		exit(1);
+	}
+ 
+	// sort alphabetically so position i means the same subtype across all
+	// four directories (msa/reference/bowtie2-reference/variant)
+	qsort(filenames, count, sizeof(char *), cmp_str);
+ 
+	if (count > num_references)
+	{
+		fprintf(stderr, "Warning: %s directory '%s' has %d files; only using the first %d (sorted alphabetically).\n", dir_label, dir_path, count, num_references);
+	}
+ 
+	char **paths = (char **)malloc(num_references * sizeof(char *));
+	int i;
+	for (i = 0; i < num_references; i++)
+	{
+		paths[i] = (char *)malloc((strlen(dir_path) + strlen(filenames[i]) + 2) * sizeof(char));
+		sprintf(paths[i], "%s/%s", dir_path, filenames[i]);
+	}
+ 
+	for (i = 0; i < count; i++)
+	{
+		free(filenames[i]);
+	}
+	free(filenames);
+ 
+	return paths;
+}
+
 /**
  * @brief Entry point: runs the full strain-elimination + mismatch-matrix pipeline.
  *
@@ -3502,14 +3537,23 @@ int main(int argc, char **argv)
 	opt.no_read_bam = 0;
 	opt.deletion_threshold = 0.002;
 	memset(opt.print_counts, '\0', 1000);
-	memset(opt.msa_reference_file, '\0', 1000);
 	memset(opt.print_deletions, '\0', 1000);
 	parse_options(argc, argv, &opt);
 	int i, j, k, l;
+ 
+	// --- Resolve the N per-subtype file paths from the four input directories ---
+	// NOTE: this currently only wires up index 0 (single-subtype behavior,
+	// preserved as-is) -- looping over all opt.num_references entries and
+	// merging results across subtypes is the next step, not yet implemented.
+	char **MSA_paths = list_sorted_dir_files(opt.MSA_dir, opt.num_references, "MSA");
+	char **MSA_reference_paths = list_sorted_dir_files(opt.MSA_reference_dir, opt.num_references, "MSA reference");
+	char **bowtie2_reference_paths = list_sorted_dir_files(opt.bowtie2_reference_dir, opt.num_references, "Bowtie2 reference");
+	char **variant_paths = list_sorted_dir_files(opt.variant_dir, opt.num_references, "variant sites");
+ 
 	if (opt.clean_reads == 1)
 	{
 		printf("You've selected -d to clean your FASTA/FASTQ reads. If this is not correct, please quit the program and removed the -d option. Cleaning reads...\n");
-		clean_reads(opt);
+		clean_reads(opt.paired, opt.fasta_format, opt.single_end_file, opt.forward_end_file, opt.reverse_end_file);
 	}
 	// int problematic_sites[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 76, 78, 150, 153, 285, 320, 538, 553, 558, 635, 660, 663, 759, 856, 1001, 1406, 1707, 1814, 1895, 1947, 2087, 2091, 2094, 2101, 2198, 2247, 2381, 2604, 3050, 3073, 3145, 3191, 3480, 3504, 3564, 3639, 3778, 3877, 4050, 4221, 4463, 4505, 4692, 4854, 4991, 5011, 5130, 5196, 5233, 5257, 5322, 5375, 5393, 5498, 5657, 5736, 5743, 5744, 5765, 5766, 5847, 5880, 6167, 6255, 6309, 6310, 6312, 6483, 6804, 6866, 6869, 6874, 6877, 6971, 6975, 6977, 7017, 7038, 7090, 7118, 7214, 7246, 7305, 7396, 7805, 8022, 8026, 8328, 8459, 8550, 8658, 8678, 8688, 8696, 8790, 8827, 8828, 8835, 8886, 8887, 8943, 8999, 9039, 9141, 9249, 9276, 9471, 10046, 10122, 10129, 10157, 10239, 10266, 10554, 10716, 10764, 10986, 11048, 11074, 11083, 11392, 11535, 12041, 12164, 12413, 12491, 12506, 12685, 12698, 12751, 13117, 13161, 13193, 13239, 13402, 13408, 13476, 13512, 13513, 13514, 13571, 13599, 13650, 13686, 13687, 13693, 14197, 14222, 14223, 14225, 14277, 14488, 14536, 14548, 14553, 14851, 14852, 15075, 15103, 15199, 15230, 15435, 15513, 15521, 15769, 15771, 15922, 16130, 16132, 16188, 16210, 16290, 16537, 16738, 16787, 16887, 16988, 17096, 17178, 17179, 17182, 17479, 17567, 17668, 17675, 17716, 17754, 17848, 18297, 18445, 18465, 18505, 18506, 18690, 18716, 19250, 19286, 19298, 19299, 19338, 19339, 19344, 19369, 19406, 19482, 19484, 19548, 19732, 20056, 20123, 20126, 20128, 20254, 20465, 20857, 21149, 21151, 21209, 21212, 21281, 21302, 21304, 21305, 21379, 21550, 21551, 21575, 21609, 21658, 21968, 21987, 22329, 22335, 22389, 22393, 22410, 22416, 22420, 22488, 22500, 22506, 22515, 22516, 22521, 22651, 22661, 22797, 22802, 22892, 22904, 23016, 23116, 23122, 23144, 23162, 23288, 23291, 23292, 23302, 23343, 23519, 23652, 23738, 23745, 23763, 23766, 23775, 23855, 24389, 24390, 24410, 24497, 24557, 24622, 24673, 24728, 24933, 24942, 25202, 25381, 25382, 25446, 25798, 25902, 25908, 25961, 26549, 26700, 26709, 27033, 27534, 27658, 27660, 27720, 27760, 27761, 27784, 27792, 28004, 28005, 28006, 28008, 28184, 28253, 28517, 28559, 28676, 28780, 28881, 28882, 28883, 28886, 28985, 29037, 29039, 29049, 29058, 29378, 29425, 29427, 29428, 29553, 29594, 29737, 29783, 29786, 29804, 29805, 29806, 29807, 29808, 29809, 29810, 29811, 29812, 29813, 29814, 29815, 29816, 29817, 29818, 29819, 29820, 29821, 29822, 29823, 29824, 29825, 29826, 29827, 29828, 29829, 29830, 29831, 29832, 29833, 29834, 29835, 29836, 29837, 29838, 29839, 29840, 29841, 29842, 29843, 29844, 29845, 29846, 29847, 29848, 29849, 29850, 29851, 29852, 29853, 29854, 29855, 29856, 29857, 29858, 29859, 29860, 29861, 29862, 29863, 29864, 29865, 29866, 29867, 29868, 29869, 29870, 29871, 29872, 29873, 29874, 29875, 29876, 29877, 29878, 29879, 29880, 29881, 29882, 29883, 29884, 29885, 29886, 29887, 29888, 29889, 29890, 29891, 29892, 29893, 29894, 29895, 29896, 29897, 29898, 29899, 29900, 29901, 29902, 29903};
 	int problematic_sites[] = {};
@@ -3520,16 +3564,16 @@ int main(int argc, char **argv)
 	{
 		reference_index[i] = 0;
 	}
-	align_references(number_of_problematic_sites, problematic_sites, opt.msa_reference_file, opt);
-	perform_bowtie_alignment_xeq(opt);
+	align_references(number_of_problematic_sites, problematic_sites, MSA_reference_paths[0], bowtie2_reference_paths[0]);
+	perform_bowtie_alignment_xeq(opt.paired, opt.fasta_format, bowtie2_reference_paths[0], opt.forward_end_file, opt.reverse_end_file, opt.single_end_file, opt.sam);
 	int invoke_cleaning = calculate_error_rates(opt.sam);
 	if (invoke_cleaning == 1 && opt.clean_reads == 0)
 	{
-		clean_reads(opt);
+		clean_reads(opt.paired, opt.fasta_format, opt.single_end_file, opt.forward_end_file, opt.reverse_end_file);
 	}
-	perform_bowtie_alignment(opt);
+	perform_bowtie_alignment(opt.paired, opt.fasta_format, bowtie2_reference_paths[0], opt.forward_end_file, opt.reverse_end_file, opt.single_end_file, opt.sam);
 	gzFile MSA_file = Z_NULL;
-	if ((MSA_file = gzopen(opt.fasta, "r")) == Z_NULL)
+	if ((MSA_file = gzopen(MSA_paths[0], "r")) == Z_NULL)
 		fprintf(stderr, "MSA File could not be opened.\n");
 	int length_of_MSA = 0;
 	length_of_MSA = setMSALength(MSA_file);
@@ -3540,7 +3584,7 @@ int main(int argc, char **argv)
 		problematic_sites[i]=-1;
 	}
 	int number_of_problematic_sites=process_problematic_sites(problematic_sites);*/
-	if ((MSA_file = gzopen(opt.fasta, "r")) == Z_NULL)
+	if ((MSA_file = gzopen(MSA_paths[0], "r")) == Z_NULL)
 		fprintf(stderr, "MSA File could not be opened.\n");
 	int *strain_info = (int *)malloc(2 * sizeof(int));
 	setNumStrains(MSA_file, strain_info);
@@ -3572,9 +3616,11 @@ int main(int argc, char **argv)
 	fclose(reference_file);*/
 	printf("Reading in MSA...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	if ((MSA_file = gzopen(opt.fasta, "r")) == Z_NULL)
+	if ((MSA_file = gzopen(MSA_paths[0], "r")) == Z_NULL)
 		fprintf(stderr, "MSA File could not be opened.\n");
-	int ref_index = readInMSA(MSA_file, MSA, names_of_strains, length_of_MSA);
+	char *reference_name = read_fasta_header_name(MSA_reference_paths[0]);
+	int ref_index = readInMSA(MSA_file, MSA, names_of_strains, length_of_MSA, reference_name);
+	free(reference_name);
 	gzclose(MSA_file);
 	// for(i=0; i<length_of_MSA; i++){
 	//	free(allele_max[i]);
@@ -3612,7 +3658,7 @@ int main(int argc, char **argv)
 	FILE *variant_sites_file;
 	int *variant_sites;
 	int *number_of_variant_sites_p = (int *)malloc(sizeof(int));
-	if ((variant_sites_file = fopen(opt.variant, "r")) == (FILE *)NULL)
+	if ((variant_sites_file = fopen(variant_paths[0], "r")) == (FILE *)NULL)
 		fprintf(stderr, "variants File could not be opened.\n");
 	variant_sites = readVariantSitesFile(variant_sites_file, number_of_variant_sites_p);
 	fclose(variant_sites_file);
@@ -3676,7 +3722,7 @@ int main(int argc, char **argv)
 			resize_names_of_strains[i][j] = '\0';
 		}
 	}
-
+ 
 	reallocate_memory(number_of_strains_remaining, strains_kept, MSA, names_of_strains, max_name_length, number_of_strains);
 	printf("Creating mismatch matrix...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
@@ -3708,15 +3754,15 @@ int main(int argc, char **argv)
 		}
 		fprintf(outfile, "\n");
 		pthread_t threads[opt.number_of_cores];	 // array of our threads
-		ThreadStruct tstr[opt.number_of_cores]; // array of stuct that contains input and output for each thread
+		ThreadStruct thread_str[opt.number_of_cores]; // array of stuct that contains input and output for each thread
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			tstr[i].sam_line_start = 0;
-			tstr[i].sam_line_end = 0;
-			tstr[i].results = malloc(sizeof(struct ResultsStruct));
-			tstr[i].number_of_strains_remaining = number_of_strains_remaining;
-			tstr[i].number_of_strains = number_of_strains;
-			tstr[i].length_of_MSA = length_of_MSA;
+			thread_str[i].sam_line_start = 0;
+			thread_str[i].sam_line_end = 0;
+			thread_str[i].results_str = malloc(sizeof(struct ResultsStruct));
+			thread_str[i].number_of_strains_remaining = number_of_strains_remaining;
+			thread_str[i].number_of_strains = number_of_strains;
+			thread_str[i].length_of_MSA = length_of_MSA;
 		}
 		// Split sam_results into opt.number_of_cores roughly-equal chunks, then
 		// nudge each chunk's boundary (via adjust_start_end) so no thread's
@@ -3733,7 +3779,7 @@ int main(int argc, char **argv)
 				end = max_sam_length[1] - 1;
 			}
 			int *adjust_ends = (int *)malloc(2 * sizeof(int));
-			if (tstr[i].sam_line_start == 1)
+			if (thread_str[i].sam_line_start == 1)
 			{
 				start++;
 			}
@@ -3742,39 +3788,39 @@ int main(int argc, char **argv)
 			adjust_start_end(start, end, adjust_ends, max_sam_length[0]);
 			if (start != adjust_ends[0])
 			{
-				tstr[i - 1].sam_line_end = tstr[i - 1].sam_line_end - 1;
+				thread_str[i - 1].sam_line_end = thread_str[i - 1].sam_line_end - 1;
 			}
 			if (end != adjust_ends[1])
 			{
-				tstr[i + 1].sam_line_start = tstr[i + 1].sam_line_start + 1;
+				thread_str[i + 1].sam_line_start = thread_str[i + 1].sam_line_start + 1;
 			}
 			if (i == opt.number_of_cores - 1)
 			{
 				adjust_ends[1] = max_sam_length[1];
 			}
-			tstr[i].sam_line_start = adjust_ends[0];
-			tstr[i].sam_line_end = adjust_ends[1];
-			tstr[i].thread_index = i;
-			tstr[i].max_sam_line_length = max_sam_length[0];
+			thread_str[i].sam_line_start = adjust_ends[0];
+			thread_str[i].sam_line_end = adjust_ends[1];
+			thread_str[i].thread_index = i;
+			thread_str[i].max_sam_line_length = max_sam_length[0];
 			j = j + divideFile;
 			free(adjust_ends);
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			printf("thread: %d start: %d end: %d\n", tstr[i].thread_index, tstr[i].sam_line_start, tstr[i].sam_line_end);
-			tstr[i].results->mismatch = (char **)malloc((tstr[i].sam_line_end - tstr[i].sam_line_start) * (sizeof(char *)));
-			for (k = 0; k < tstr[i].sam_line_end - tstr[i].sam_line_start; k++)
+			printf("thread: %d start: %d end: %d\n", thread_str[i].thread_index, thread_str[i].sam_line_start, thread_str[i].sam_line_end);
+			thread_str[i].results_str->mismatch = (char **)malloc((thread_str[i].sam_line_end - thread_str[i].sam_line_start) * (sizeof(char *)));
+			for (k = 0; k < thread_str[i].sam_line_end - thread_str[i].sam_line_start; k++)
 			{
-				tstr[i].results->mismatch[k] = (char *)malloc((max_sam_length[0] + 300000) * sizeof(char));
+				thread_str[i].results_str->mismatch[k] = (char *)malloc((max_sam_length[0] + 300000) * sizeof(char));
 				for (l = 0; l < max_sam_length[0] + 300000; l++)
 				{
-					tstr[i].results->mismatch[k][l] = '\0';
+					thread_str[i].results_str->mismatch[k][l] = '\0';
 				}
 			}
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			pthread_create(&threads[i], NULL, writeMismatchMatrix_paired, &tstr[i]);
+			pthread_create(&threads[i], NULL, writeMismatchMatrix_paired, &thread_str[i]);
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
@@ -3782,13 +3828,13 @@ int main(int argc, char **argv)
 		}
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			for (j = 0; j < (tstr[i].sam_line_end - tstr[i].sam_line_start); j++)
+			for (j = 0; j < (thread_str[i].sam_line_end - thread_str[i].sam_line_start); j++)
 			{
-				if (tstr[i].results->mismatch[j][0] == '\0')
+				if (thread_str[i].results_str->mismatch[j][0] == '\0')
 				{
 					break;
 				}
-				fprintf(outfile, "%s\n", tstr[i].results->mismatch[j]);
+				fprintf(outfile, "%s\n", thread_str[i].results_str->mismatch[j]);
 			}
 		}
 		for (i = 0; i < max_sam_length[1]; i++)
@@ -3798,12 +3844,12 @@ int main(int argc, char **argv)
 		free(sam_results);
 		for (i = 0; i < opt.number_of_cores; i++)
 		{
-			for (j = 0; j < tstr[i].sam_line_end - tstr[i].sam_line_start; j++)
+			for (j = 0; j < thread_str[i].sam_line_end - thread_str[i].sam_line_start; j++)
 			{
-				free(tstr[i].results->mismatch[j]);
+				free(thread_str[i].results_str->mismatch[j]);
 			}
-			free(tstr[i].results->mismatch);
-			free(tstr[i].results);
+			free(thread_str[i].results_str->mismatch);
+			free(thread_str[i].results_str);
 		}
 	}
 	else if (opt.paired == 1 && opt.no_read_bam == 1)
@@ -3847,11 +3893,11 @@ int main(int argc, char **argv)
 	memset(buffer, '\0', FASTA_MAXLINE);
 	if (opt.llr == 1)
 	{
-		sprintf(buffer, "Rscript EM_C_LLR.R -i %s -f %lf -e %lf -l -s -v %s -r %s -b %s", opt.outfile, opt.freq, opt.error, opt.variant, opt.fasta, opt.print_counts);
+		sprintf(buffer, "Rscript EM_C_LLR.R -i %s -f %lf -e %lf -l -s -v %s -r %s -b %s", opt.outfile, opt.freq, opt.error, variant_paths[0], MSA_paths[0], opt.print_counts);
 	}
 	else
 	{
-		sprintf(buffer, "Rscript EM_C_LLR.R -i %s -f %lf -e %lf -s -v %s -r %s -b %s", opt.outfile, opt.freq, opt.error, opt.variant, opt.fasta, opt.print_counts);
+		sprintf(buffer, "Rscript EM_C_LLR.R -i %s -f %lf -e %lf -s -v %s -r %s -b %s", opt.outfile, opt.freq, opt.error, variant_paths[0], MSA_paths[0], opt.print_counts);
 	}
 	system(buffer);
 	free(buffer);

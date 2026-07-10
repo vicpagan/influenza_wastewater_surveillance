@@ -5,13 +5,17 @@
 #define MAX_CIGAR 1000 // max number of CIGAR operations in an alignment
 #define MAX_READ_LENGTH 1000 // max length of a single read
 
+/**
+ * @brief Struct to hold command line options
+ * 
+ */
 typedef struct Options
 {
 	// reference and alignment files
-	char fasta[1000];
-	char MSA_reference[1000];
-	char bowtie2_reference[1000];
-	char variant[1000];
+	char MSA_dir[1000];
+	char MSA_reference_dir[1000];
+	char bowtie2_reference_dir[1000];
+	char variant_dir[1000];
 	
 	// read inputs
 	int paired;
@@ -37,6 +41,7 @@ typedef struct Options
 	int min_strains;
 	int max_strains;
 	int llr;
+	int num_references;
 	
 	// performance parameters
 	int number_of_cores;
@@ -44,17 +49,25 @@ typedef struct Options
 	int remove_identical;
 } Options;
 
+/**
+ * @brief Struct for one thread's share of the mismatch matrix
+ * 
+ */
 typedef struct ResultsStruct
 {
 	char **mismatch;
 } ResultsStruct;
 
+/**
+ * @brief Struct to hold thread parameters for parallel processing the mismatch matrix
+ * 
+ */
 typedef struct ThreadStruct
 {
-	int start;
-	int end;
-	int thread_id;
-	int max_sam_length;
+	int sam_line_start;
+	int sam_line_end;
+	int thread_index;
+	int max_sam_line_length;
 	int length_of_MSA;
 	int number_of_strains;
 	int number_of_strains_remaining;
