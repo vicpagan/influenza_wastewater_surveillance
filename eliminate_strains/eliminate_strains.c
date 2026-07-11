@@ -3213,15 +3213,15 @@ void perform_bowtie_alignment(int paired, int fasta_format, char *bowtie_referen
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
 	// FIXME: Not sure if we should keep this check but make it unhardcoded or not
-	if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
-	{
-		printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
-	}
-	else
-	{
+	// if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
+	// {
+	// 	printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
+	// }
+	// else
+	// {
 		sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
 		system(buffer);
-	}
+	// }
 	if (paired == 1 && fasta_format == 1)
 	{
 		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
@@ -3261,15 +3261,15 @@ void perform_bowtie_alignment_xeq(int paired, int fasta_format, char *bowtie_ref
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
 	// FIXME: Not sure if we should keep this check but make it unhardcoded or not
-	if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
-	{
-		printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
-	}
-	else
-	{
+	// if (access("/space/lenore/influenza/references/reference_sequences/cat_ref_19088566.fasta.1.bt2", F_OK) == 0)
+	// {
+	// 	printf("Wuhan reference file MN908947.3.fasta.1.bt2 exists. Not rebuilding bowtie2-build database.\n");
+	// }
+	// else
+	// {
 		sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
 		system(buffer);
-	}
+	// }
 	if (paired == 1 && fasta_format == 1)
 	{
 		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
