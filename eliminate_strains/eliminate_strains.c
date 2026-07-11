@@ -3224,22 +3224,22 @@ void perform_bowtie_alignment(int paired, int fasta_format, char *bowtie_referen
 	// }
 	if (paired == 1 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 0 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 1 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 0 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	free(buffer);
@@ -3272,22 +3272,22 @@ void perform_bowtie_alignment_xeq(int paired, int fasta_format, char *bowtie_ref
 	// }
 	if (paired == 1 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --xeq --no-unal -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 0 && fasta_format == 1)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --xeq --no-unal -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 1 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --xeq --no-unal -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
 		system(buffer);
 	}
 	else if (paired == 0 && fasta_format == 0)
 	{
-		sprintf(buffer, "/space/lenore/software/bowtie2-2.5.4/bowtie2 --all --xeq --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
+		sprintf(buffer, "bowtie2 --all --xeq --no-unal -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
 		system(buffer);
 	}
 	free(buffer);
@@ -3541,10 +3541,7 @@ int main(int argc, char **argv)
 	parse_options(argc, argv, &opt);
 	int i, j, k, l;
  
-	// --- Resolve the N per-subtype file paths from the four input directories ---
-	// NOTE: this currently only wires up index 0 (single-subtype behavior,
-	// preserved as-is) -- looping over all opt.num_references entries and
-	// merging results across subtypes is the next step, not yet implemented.
+	// NOTE: this currently only uses index 0 
 	char **MSA_paths = list_sorted_dir_files(opt.MSA_dir, opt.num_references, "MSA");
 	char **MSA_reference_paths = list_sorted_dir_files(opt.MSA_reference_dir, opt.num_references, "MSA reference");
 	char **bowtie2_reference_paths = list_sorted_dir_files(opt.bowtie2_reference_dir, opt.num_references, "Bowtie2 reference");
