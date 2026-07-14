@@ -15,14 +15,15 @@
  * @param problematic_sites list of known problematic genome sites
  * @param MSA_reference_path path to the MSA reference file
  * @param bowtie2_reference_path path to the Bowtie2 reference file
+ * @param reference_index Output: array of indices mapping Bowtie2 reference positions to MSA reference columns
  */
-void align_references(int number_of_problematic_sites, int problematic_sites[], char *MSA_reference_path, char *bowtie2_reference_path)
+void align_references(int number_of_problematic_sites, int problematic_sites[], char *MSA_reference_path, char *bowtie2_reference_path, int *reference_index)
 {
 	// read in MSA reference sequence
 	char *line = NULL;
 	size_t len = 0;
 	ssize_t read;
-	
+
 	FILE *MSA_reference_file = fopen(MSA_reference_path, "r");
 	if (MSA_reference_file == NULL)
 	{
