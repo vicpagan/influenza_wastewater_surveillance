@@ -50,7 +50,7 @@
  * 
  * @return Number of strains remaining after elimination.
  */
-int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold, char ***sam_results_out, int *num_sam_lines_out);
+int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length);
 
 
 /**
@@ -61,7 +61,7 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
  * @see calculateAlleleFreq_paired for full parameter documentation (identical here),
  * including sam_results_out/num_sam_lines_out.
  */
-int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold, char ***sam_results_out, int *num_sam_lines_out);
+int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length);
 
 
 #endif // CALCULATE_ALLELE_FREQ_H

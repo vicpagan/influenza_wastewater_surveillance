@@ -8,16 +8,16 @@
  * panel) at every aligned position, avoiding double-counting bases covered by
  * both mates of a pair (see the `visited` array). Formats one output row per
  * read pair as "readname\\talignment_size\\tmismatch_count...", written into
- * this thread's ThreadStruct.results_str.
+ * this thread's MismatchMatrixThreadStruct.results_str.
  *
- * @param ptr Pointer to this thread's ThreadStruct (cast internally).
+ * @param ptr Pointer to this thread's MismatchMatrixThreadStruct (cast internally).
  * @return NULL always; real output is written into thread_str->results_str, not returned.
  */
 void *writeMismatchMatrix_paired(void *ptr)
 {
 	int i, j, k;
-	struct ThreadStruct *thread_str = (ThreadStruct *)ptr;
-	ResultsStruct *results_str = thread_str->results_str;
+	struct MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
+	char **mismatch_matrix_row_partition = thread_str->mismatch_matrix_row_partition;
 	int max_sam_line_length = thread_str->max_sam_line_length;
 	int length_of_MSA = thread_str->length_of_MSA;
 	int number_of_strains = thread_str->number_of_strains;
@@ -515,7 +515,7 @@ void *writeMismatchMatrix_paired(void *ptr)
 				free(num2);
 			}
 			// fprintf(outfile,"\n");
-			strcpy(results_str->mismatch[index_mismatch], resultsPath);
+			strcpy(mismatch_matrix_row_partition[index_mismatch], resultsPath);
 			index_mismatch++;
 		}
 		free(buffer_copy);

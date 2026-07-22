@@ -6,75 +6,70 @@
 #include "align_reference.h"
 
 /**
- * @brief Aligns the MSA reference sequence to the Bowtie2 reference sequence and builds reference_index
+ * @brief Aligns the MSA reference sequence to the Bowtie2 reference sequence and builds a reference index array
  *
  * reference_index[i] = the column in the MSA reference that 
  * corresponds to position i in the Bowtie2 reference
- *
- * @param number_of_problematic_sites number of known problematic genome sites
- * @param problematic_sites list of known problematic genome sites
- * @param MSA_reference_path path to the MSA reference file
- * @param bowtie2_reference_path path to the Bowtie2 reference file
- * @param reference_index Output: array of indices mapping Bowtie2 reference positions to MSA reference columns
+ * 
+ * @param reference_data_str 
+ * @param msa_reference_filepath 
+ * @param bowtie2_reference_filepath 
  */
-void align_references(int number_of_problematic_sites, int problematic_sites[], char *MSA_reference_path, char *bowtie2_reference_path, int *reference_index)
+void align_reference(ReferenceData *reference_data_str, char *msa_reference_filepath, char *bowtie2_reference_filepath)
 {
-	// read in MSA reference sequence
-	char *line = NULL;
-	size_t len = 0;
-	ssize_t read;
-
-	FILE *MSA_reference_file = fopen(MSA_reference_path, "r");
-	if (MSA_reference_file == NULL)
+	reference_data_str->reference_index = (int *)calloc(FASTA_MAXLINE, sizeof(int));
+	if (reference_data_str->reference_index == NULL)
 	{
-		printf("Error! Cannot open MSA reference file.");
+		fprintf(stderr, "Memory allocation for reference index array failed.\n");
 		exit(1);
 	}
 
-	char *MSA_reference_seq = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	int i, j;
-	for (i = 0; i < FASTA_MAXLINE; i++)
+	char buffer[FASTA_MAXLINE];
+
+	// read in msa reference sequence
+	FILE *msa_reference_file;
+	if ((msa_reference_file = fopen(msa_reference_filepath, "r")) == (FILE *)NULL)
 	{
-		MSA_reference_seq[i] = '\0';
+		fprintf(stderr, "Error! Cannot open MSA reference file.");
+		exit(1);
 	}
-	while ((read = getline(&line, &len, MSA_reference_file)) != -1)
+
+	char *msa_reference_sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
+	if (!msa_reference_sequence)
 	{
-		j = strlen(line);
-		for (i = 0; i < j; i++)
+		fprintf(stderr, "Memory allocation for MSA reference sequence failed\n");
+		exit(1);
+	}
+	while (fgets(buffer, FASTA_MAXLINE, msa_reference_file) != NULL)
+	{
+		if (buffer[0] != '>')
 		{
-			MSA_reference_seq[i] = line[i];
+			strcpy(msa_reference_sequence, buffer);
 		}
 	}
-	fclose(MSA_reference_file);
+	fclose(msa_reference_file);
 
 	// read in bowtie2 reference sequence
-	FILE *bowtie2_reference_file = fopen(bowtie2_reference_path, "r");
-	if (bowtie2_reference_file == NULL)
+	FILE *bowtie2_reference_file;
+	if ((bowtie2_reference_file = fopen(bowtie2_reference_filepath, "r")) == (FILE *)NULL)
 	{
-		printf("Error! Cannot open bowtie2 reference file. Please make sure this file is in the current directory.");
+		fprintf(stderr, "Error! Cannot open Bowtie2 reference file.");
 		exit(1);
 	}
-	char *bowtie2_reference_seq = malloc(FASTA_MAXLINE * sizeof(char));
-	if (!bowtie2_reference_seq)
+
+	char *bowtie2_reference_sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
+	if (!bowtie2_reference_sequence)
 	{
-		fprintf(stderr, "Memory allocation failed\n");
+		fprintf(stderr, "Memory allocation for Bowtie2 reference sequence failed\n");
+		exit(1);
 	}
-
-	bowtie2_reference_seq[0] = '\0'; // initialize as empty string
-	char line2[FASTA_MAXLINE];
-
-	while (fgets(line2, sizeof(line2), bowtie2_reference_file))
+	while (fgets(buffer, FASTA_MAXLINE, bowtie2_reference_file) != NULL)
 	{
-		if (line2[0] == '>')
+		if (buffer[0] != '>')
 		{
-			// skip FASTA header line
-			continue;
+			strcpy(bowtie2_reference_sequence, buffer);
 		}
-		// strip newline
-		line2[strcspn(line2, "\r\n")] = '\0';
-		strcat(bowtie2_reference_seq, line2);
 	}
-
 	fclose(bowtie2_reference_file);
 
 	// use needleman-wunsch alignment
@@ -91,45 +86,65 @@ void align_references(int number_of_problematic_sites, int problematic_sites[], 
 	char case_sensitive = 0;
 	scoring_t scoring;
 	scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
-	needleman_wunsch_align(MSA_reference_seq, bowtie2_reference_seq, &scoring, nw, result);
+	needleman_wunsch_align(msa_reference_sequence, bowtie2_reference_sequence, &scoring, nw, result);
 	printf("seqA: %s\n", result->result_a);
 	printf("seqB: %s\n", result->result_b);
 	printf("alignment score: %i\n", result->score);
 
 	// fill reference indicies
+	// ProblematicSites *problematic_sites_str = &reference_data_str->problematic_sites_str;
 	int length_alignment = strlen(result->result_b);
-	j = 0;
-	int k = 0;
+	int j = 0;
+
+	int i, k;
 	for (i = 0; i < length_alignment; i++)
 	{
 		if (result->result_a[i] == '-')
 		{
-			reference_index[i] = -1;
+			reference_data_str->reference_index[i] = -1;
 		}
 		else
 		{
 			if (result->result_a[i] != result->result_b[i])
 			{
-				reference_index[i] = -1;
+				reference_data_str->reference_index[i] = -1;
 			}
 			else
 			{
-				reference_index[i] = j;
-				for (k = 0; k < number_of_problematic_sites; k++)
-				{
-					if (i == problematic_sites[k] - 1)
-					{
-						reference_index[i] = -1;
-					}
-				}
+				reference_data_str->reference_index[i] = j;
+
+				// TODO: implement problematic sites 
+				// for (k = 0; k < problematic_sites_str->num_problematic_sites; k++)
+				// {
+				// 	if (i == problematic_sites_str->problematic_sites[k] - 1)
+				// 	{
+				// 		reference_data_str->reference_index[i] = -1;
+				// 	}
+				// }
 			}
 			j++;
 		}
 	}
 
-	free(MSA_reference_seq);
-	free(bowtie2_reference_seq);
-	free(line);
+	free(msa_reference_sequence);
+	free(bowtie2_reference_sequence);
 	needleman_wunsch_free(nw);
 	alignment_free(result);
+}
+
+/**
+ * @brief
+ * 
+ * @param reference_data_strs
+ * @param num_references
+ * @param msa_reference_filepaths
+ * @param bowtie2_reference_filepaths
+ */
+void align_all_references(ReferenceData **reference_data_strs, int num_references, char **msa_reference_filepaths, char **bowtie2_reference_filepaths)
+{
+	int ref_idx;
+	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+	{
+		align_reference(reference_data_strs[ref_idx], msa_reference_filepaths[ref_idx], bowtie2_reference_filepaths[ref_idx]);
+	}
 }

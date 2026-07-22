@@ -42,7 +42,7 @@
  * 
  * @return Number of strains remaining after elimination.
  */
-int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold, char ***sam_results_out, int *num_sam_lines_out)
+int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length)
 {
 	int i, j;
 	char buffer[FASTA_MAXLINE];
@@ -76,34 +76,31 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 	{
 		deletions[i] = 0;
 	}
-	// Growable cache of every raw SAM line, filled in the same pass as the
-	// tallying below -- this is what lets callers avoid a second disk read
-	// (e.g. via readInSamFile()) later to build the mismatch matrix.
-	char **cached_lines = NULL;
+	
+	char **cached_sam_results = NULL;
 	int cached_capacity = 0;
-	int cached_count_local = 0;
+	int cached_num_sam_lines = 0;
 
 	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read pair ---
 	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
 	{
 		if (buffer[0] != '@')
 		{
-			max_sam_length[1]++;
-			if (sam_results_out != NULL)
+			if (sam_results != NULL)
 			{
-				if (cached_count_local == cached_capacity)
+				if (cached_num_sam_lines == cached_capacity)
 				{
 					cached_capacity = cached_capacity == 0 ? 1024 : cached_capacity * 2;
-					cached_lines = (char **)realloc(cached_lines, cached_capacity * sizeof(char *));
+					cached_sam_results = (char **)realloc(cached_sam_results, cached_capacity * sizeof(char *));
 				}
-				cached_lines[cached_count_local] = strdup(buffer);
-				cached_count_local++;
+				cached_sam_results[cached_num_sam_lines] = strdup(buffer);
+				cached_num_sam_lines++;
 			}
 			char *buffer_copy = strdup(buffer);
 			int length_of_sam = strlen(buffer);
-			if (length_of_sam > max_sam_length[0])
+			if (length_of_sam > *max_sam_line_length)
 			{
-				max_sam_length[0] = length_of_sam;
+				*max_sam_line_length = length_of_sam;
 			}
 			s = strtok(buffer, "\t");
 			// char* name = strdup(s);
@@ -399,9 +396,9 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 		{
 			// double deletion_freq;
 			// deletion_freq = deletions[i]/max_sam_length[1];
-			if (deletions[i] / max_sam_length[1] > deletion_threshold)
+			if (deletions[i] / *max_sam_line_length > deletion_threshold)
 			{
-				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / max_sam_length[1]);
+				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / *max_sam_line_length);
 			}
 		}
 		fclose(deletion_sites_file);
@@ -706,10 +703,14 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
 	}
 	printf("Number remaining: %d\n", number_remaining);
 	free(incompat_counter);
-	if (sam_results_out != NULL)
+	if (sam_results != NULL)
 	{
-		*sam_results_out = cached_lines;
-		*num_sam_lines_out = cached_count_local;
+		if (cached_num_sam_lines > 0 && cached_capacity > cached_num_sam_lines)
+		{
+			char **cached_sam_results = realloc(cached_sam_results, cached_num_sam_lines * sizeof(char *));
+		}
+		*sam_results = cached_sam_results;
+		*num_sam_lines = cached_num_sam_lines;
 	}
 	return number_remaining;
 }
@@ -721,7 +722,7 @@ int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, ch
  * @see calculateAlleleFreq_paired for full parameter documentation (identical here),
  * including sam_results_out/num_sam_lines_out.
  */
-int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], int *max_sam_length, char print_deletions[], double deletion_threshold, char ***sam_results_out, int *num_sam_lines_out)
+int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length)
 {
 	int i, j;
 	char buffer[FASTA_MAXLINE];
@@ -734,38 +735,35 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 		cigar_chars[i] = '\0';
 	}
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	double *deletions = (double *)malloc(length_of_MSA * sizeof(double));
-	for (i = 0; i < length_of_MSA; i++)
+	double *deletions = (double *)malloc((length_of_MSA + 1) * sizeof(double));
+	for (i = 0; i < length_of_MSA + 1; i++)
 	{
 		deletions[i] = 0;
 	}
-	// Growable cache of every raw SAM line, filled in the same pass as the
-	// tallying below -- this is what lets callers avoid a second disk read
-	// (e.g. via readInSamFile()) later to build the mismatch matrix.
-	char **cached_lines = NULL;
+
+	char **cached_sam_results = NULL;
 	int cached_capacity = 0;
-	int cached_count_local = 0;
+	int cached_num_sam_lines = 0;
 	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read ---
 	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
 	{
 		if (buffer[0] != '@')
 		{
-			max_sam_length[1]++;
-			if (sam_results_out != NULL)
+			if (sam_results != NULL)
 			{
-				if (cached_count_local == cached_capacity)
+				if (cached_num_sam_lines == cached_capacity)
 				{
 					cached_capacity = cached_capacity == 0 ? 1024 : cached_capacity * 2;
-					cached_lines = (char **)realloc(cached_lines, cached_capacity * sizeof(char *));
+					cached_sam_results = (char **)realloc(cached_sam_results, cached_capacity * sizeof(char *));
 				}
-				cached_lines[cached_count_local] = strdup(buffer);
-				cached_count_local++;
+				cached_sam_results[cached_num_sam_lines] = strdup(buffer);
+				cached_num_sam_lines++;
 			}
 			char *buffer_copy = strdup(buffer);
 			int length_of_sam = strlen(buffer);
-			if (length_of_sam > max_sam_length[0])
+			if (length_of_sam > *max_sam_line_length)
 			{
-				max_sam_length[0] = length_of_sam;
+				*max_sam_line_length = length_of_sam;
 			}
 			s = strtok(buffer, "\t");
 			for (i = 0; i < 3; i++)
@@ -896,9 +894,9 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 		fprintf(deletion_sites_file, "Site\tFrequency\n");
 		for (i = 0; i < length_of_MSA; i++)
 		{
-			if (deletions[i] / max_sam_length[1] > deletion_threshold)
+			if (deletions[i] / cached_num_sam_lines > deletion_threshold)
 			{
-				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / max_sam_length[1]);
+				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / cached_num_sam_lines);
 			}
 		}
 		fclose(deletion_sites_file);
@@ -1169,10 +1167,14 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 		}
 	}
 	printf("Number of strains remaining is %d\n", number_remaining);
-	if (sam_results_out != NULL)
+	if (sam_results != NULL)
 	{
-		*sam_results_out = cached_lines;
-		*num_sam_lines_out = cached_count_local;
+		if (cached_num_sam_lines > 0 && cached_capacity > cached_num_sam_lines)
+		{
+			cached_sam_results = realloc(cached_sam_results, cached_num_sam_lines * sizeof(char *));
+		}
+		*sam_results = cached_sam_results;
+		*num_sam_lines = cached_num_sam_lines;
 	}
 	return number_remaining;
 }

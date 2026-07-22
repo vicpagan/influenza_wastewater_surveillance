@@ -11,25 +11,26 @@
  */
 typedef struct Options
 {
-	// reference and alignment files
-	char MSA_dir[1000];
-	char MSA_reference_dir[1000];
+	// MSA, reference, and alignment files
+	char msa_filepath[1000];
+	char msa_reference_dir[1000];
 	char bowtie2_reference_dir[1000];
-	char variant_dir[1000];
+	char variant_sites_dir[1000];
+	char problematic_sites_dir[1000];
+
+	// SAM file to write/read alignments
+	char sam_filepath[1000];
 	
 	// read inputs
 	int paired;
 	int fasta_format;
 	int clean_reads;
-	char single_end_file[1000];
-	char forward_end_file[1000];
-	char reverse_end_file[1000];
-
-	// SAM file to write/read alignments
-	char sam[1000];
+	char single_end_filepath[1000];
+	char forward_end_filepath[1000];
+	char reverse_end_filepath[1000];
 
 	// output files
-	char outfile[1000];
+	char output_filepath[1000];
 	char print_counts[1000];
 	char print_deletions[1000];
 
@@ -50,33 +51,76 @@ typedef struct Options
 } Options;
 
 /**
- * @brief Struct for one thread's share of the mismatch matrix
+ * @brief 
  * 
  */
-typedef struct ResultsStruct
+typedef struct MSA
 {
-	char **mismatch;
-} ResultsStruct;
+	int num_sequences;
+	int sequence_length;
+	int max_sequence_name_length;
+	// int reference_sequence_index;
+
+	char **sequences;
+	char **sequence_names;
+
+} MSA;
+
+// TODO: Future improvement - instead of storing the entire SAM lines and parsing them when calculating the mismatch, just store the important parts
+// typedef struct SAMRecord
+// {
+// 	char *qname;
+// 	int flag;
+// 	int pos;
+// 	char *cigar;
+// 	char *seq;
+// 	int edit_distance;
+// } SAMRecord;
+
+typedef struct SAMResults
+{
+	int num_sam_lines;
+	int max_sam_line_length;
+
+	char **sam_results;
+} SAMResults;
+
+
+typedef struct VariantSites
+{
+	int *variant_sites;
+	int num_variant_sites;
+} VariantSites;
+
+// TODO: Implement problematic sites considerations
+// typedef struct ProblematicSites
+// {
+// 	int *problematic_sites;
+// 	int num_problematic_sites;
+// } ProblematicSites;
+
+/**
+ * @brief 
+ * 
+ */
+typedef struct ReferenceData
+{
+	int *reference_index;
+	VariantSites variant_sites_str;
+	// ProblematicSites problematic_sites_str;
+	SAMResults sam_results_str;
+} ReferenceData;
 
 /**
  * @brief Struct to hold thread parameters for parallel processing the mismatch matrix
  * 
  */
-typedef struct ThreadStruct
+typedef struct MismatchMatrixThreadStruct
 {
 	int sam_line_start;
 	int sam_line_end;
 	int thread_index;
-	int max_sam_line_length;
-	int length_of_MSA;
-	int number_of_strains;
-	int number_of_strains_remaining;
-	ResultsStruct *results_str;
-} ThreadStruct;
-
-extern char **resize_MSA;
-extern char **resize_names_of_strains;
-extern int *reference_index;
-extern char **sam_results;
+	char **mismatch_matrix_row_partition;
+} MismatchMatrixThreadStruct;
 
 #endif /* _GLOBAL_ */
