@@ -77,6 +77,7 @@ typedef struct MSA
 // 	int edit_distance;
 // } SAMRecord;
 
+// TODO: Add SAM results filepath for executions where we DONT want the entire SAM file written in
 typedef struct SAMResults
 {
 	int num_sam_lines;
@@ -85,12 +86,6 @@ typedef struct SAMResults
 	char **sam_results;
 } SAMResults;
 
-
-typedef struct VariantSites
-{
-	int *variant_sites;
-	int num_variant_sites;
-} VariantSites;
 
 // TODO: Implement problematic sites considerations
 // typedef struct ProblematicSites
@@ -106,7 +101,6 @@ typedef struct VariantSites
 typedef struct ReferenceData
 {
 	int *reference_index;
-	VariantSites variant_sites_str;
 	// ProblematicSites problematic_sites_str;
 	SAMResults sam_results_str;
 } ReferenceData;
@@ -121,6 +115,9 @@ typedef struct MismatchMatrixThreadStruct
 	int sam_line_end;
 	int thread_index;
 	char **mismatch_matrix_row_partition;
+
+	ReferenceData **reference_data_str_ptrs;
+	MSA *msa_str_ptr;
 } MismatchMatrixThreadStruct;
 
 #endif /* _GLOBAL_ */

@@ -1,28 +1,22 @@
 #include "write_mismatch_matrix.h"
 
-/**
- * @brief Thread worker: build mismatch-matrix rows for this thread's slice of the
- * preloaded SAM lines (global `sam_results`).
- *
- * For each read pair, counts mismatches (per strain, in the global `resize_MSA`
- * panel) at every aligned position, avoiding double-counting bases covered by
- * both mates of a pair (see the `visited` array). Formats one output row per
- * read pair as "readname\\talignment_size\\tmismatch_count...", written into
- * this thread's MismatchMatrixThreadStruct.results_str.
- *
- * @param ptr Pointer to this thread's MismatchMatrixThreadStruct (cast internally).
- * @return NULL always; real output is written into thread_str->results_str, not returned.
- */
-void *writeMismatchMatrix_paired(void *ptr)
+
+void *write_mismatch_matrix_paired(void *ptr)
 {
 	int i, j, k;
-	struct MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
-	char **mismatch_matrix_row_partition = thread_str->mismatch_matrix_row_partition;
+	struct MismatchMatrixThreadStruct *thread_str_ptr = (MismatchMatrixThreadStruct *)ptr;
+	char **mismatch_matrix_row_partition = thread_str_ptr->mismatch_matrix_row_partition;
+	int thread_index = thread_str_ptr->thread_index;
+	int sam_line_start = thread_str_ptr->sam_line_start;
+	int sam_line_end = thread_str_ptr->sam_line_end;
+
+	ReferenceData **reference_data_strs = thread_str_ptr->reference_data_str_ptrs;
+	MSA *msa_str_ptr = thread_str_ptr->msa_str_ptr;
+
 	int max_sam_line_length = thread_str->max_sam_line_length;
-	int length_of_MSA = thread_str->length_of_MSA;
+	int sequence_length = msa_str_ptr->sequence_length;
 	int number_of_strains = thread_str->number_of_strains;
 	int number_of_strains_remaining = thread_str->number_of_strains_remaining;
-	int thread_index = thread_str->thread_index;
 	char buffer[FASTA_MAXLINE];
 	char *s;
 	int cigar[MAX_CIGAR];

@@ -283,52 +283,6 @@ void prune_msa_sequences(MSA *msa_str, int *sequences_to_remove)
 	msa_str->num_sequences = l;
 }
 
-/**
- * @brief 
- * 
- * @param variant_sites_filepath
- * @param num_references 
- * @return VariantSites
- */
-VariantSites read_in_variant_sites(char *variant_sites_filepath)
-{
-	char buffer[16];
-
-	VariantSites variant_sites_str;
-
-	FILE *variant_sites_file;
-	if ((variant_sites_file = fopen(variant_sites_filepath, "r")) == (FILE *)NULL)
-	{
-		fprintf(stderr, "variant sites File could not be opened.\n");
-
-		variant_sites_str.num_variant_sites = -1;
-		variant_sites_str.variant_sites = NULL;
-	}
-	else
-	{
-		int first_line = 1;
-		int i = 0;
-		while (fgets(buffer, 16, variant_sites_file) != NULL)
-		{
-			if (first_line)
-			{
-				variant_sites_str.num_variant_sites = atoi(buffer);
-				variant_sites_str.variant_sites = (int *)malloc(variant_sites_str.num_variant_sites * sizeof(int));
-
-				first_line = 0;
-			}
-			else
-			{
-				variant_sites_str.variant_sites[i] = atoi(buffer);
-				i++;
-			}
-		}
-	}
-	fclose(variant_sites_file);
-
-	return variant_sites_str;
-}
-
 // TODO: reimplement with a new variant-sites-like file format for problematic sites
 // ProblematicSites *read_in_problematic_sites(char **problematic_sites_filepaths, int num_refs){
 // 	FILE* file;
@@ -362,32 +316,21 @@ VariantSites read_in_variant_sites(char *variant_sites_filepath)
  */
 int parse_sam_flags(int flag_value)
 {
-	int bit_string[32] = {0};
-
-	// transform flag into binary string
-	int i = 0;
-	while (flag_value > 0)
-	{
-		bit_string[i] = flag_value % 2;
-		flag_value >>= 1;
-		i++;
-	}
-
-	if (bit_string[2] == 1)
-	{
-		// read was not mapped
-		return -1;
-	}
-	else if (bit_string[3] == 1)
-	{
-		// read was mapped, but mate was not mapped
-		return 2;
-	}
-	else
-	{
-		// 1 if this is first read in pair, 0 if this is second read in pair
-		return bit_string[6];
-	}
+	if (flag_value & (1 << 2))
+    {
+        // read was not mapped
+        return -1;
+    }
+    else if (flag_value & (1 << 3))
+    {
+        // read was mapped, but mate was not mapped
+        return 2;
+    }
+    else
+    {
+        // 1 if this is first read in pair, 0 if this is second read in pair
+        return (flag_value & (1 << 6)) != 0;
+    }
 }
 
 /**
@@ -534,12 +477,15 @@ void adjust_start_end(int start, int end, int *return_arr, int max_sam_length)
 	free(buffer_copy);
 }
 
+// TODO: Add options for magic numbers (95, 15, etc.)
 /**
  * @brief 
  * 
  * @param filename 
+ * @param sequence_length_threshold 
+ * @param trim_length 
  */
-void trim_ends_fastq(const char *filename)
+void trim_ends_and_filter_fastq(const char *filename, int sequence_length_threshold, int trim_length)
 {
 	char input_filepath[1000];
 	char output_filepath[1000];
@@ -574,34 +520,23 @@ void trim_ends_fastq(const char *filename)
     {
 		int seq_length = strlen(sequence);
 
-		fprintf(output_file, "%s", strain_name);
-
-		if (seq_length > 95)
+		if (seq_length >= sequence_length_threshold)
 		{
-			for (i = 15; i < (seq_length - 15); i++)
+			fprintf(output_file, "%s", strain_name);
+
+			for (i = trim_length; i < (seq_length - trim_length); i++)
 			{
 				fprintf(output_file, "%c", sequence[i]);
 			}
 			fprintf(output_file, "\n");
-		}
-		else 
-		{
-			fprintf(output_file, "%s", sequence);
-		}
 
-		fprintf(output_file, "%s", plus);
+			fprintf(output_file, "%s", plus);
 
-		if (seq_length > 95)
-		{
-			for (i = 15; i < (seq_length - 15); i++)
+			for (i = trim_length; i < (seq_length - trim_length); i++)
 			{
 				fprintf(output_file, "%c", quality[i]);
 			}
 			fprintf(output_file, "\n");
-		}
-		else 
-		{
-			fprintf(output_file, "%s", quality);
 		}
 	}
 	fclose(input_file);
@@ -613,12 +548,15 @@ void trim_ends_fastq(const char *filename)
 	free(quality);
 }
 
+// TODO: Add options for magic numbers (95, 15, etc.)
 /**
  * @brief 
  * 
  * @param filename 
+ * @param sequence_length_threshold 
+ * @param trim_length 
  */
-void trim_ends_fasta(const char *filename)
+void trim_ends_and_filter_fasta(const char *filename, int sequence_length_threshold, int trim_length)
 {
 	char input_filepath[1000];
 	char output_filepath[1000];
@@ -651,19 +589,15 @@ void trim_ends_fasta(const char *filename)
     {
 		int seq_length = strlen(sequence);
 
-		fprintf(output_file, "%s", strain_name);
-
-		if (seq_length > 95)
+		if (seq_length >= sequence_length_threshold)
 		{
-			for (i = 15; i < (seq_length - 15); i++)
+			fprintf(output_file, "%s", strain_name);
+
+			for (i = trim_length; i < (seq_length - trim_length); i++)
 			{
 				fprintf(output_file, "%c", sequence[i]);
 			}
 			fprintf(output_file, "\n");
-		}
-		else 
-		{
-			fprintf(output_file, "%s", sequence);
 		}
 	}
 	fclose(input_file);
@@ -673,268 +607,226 @@ void trim_ends_fasta(const char *filename)
 	free(sequence);
 }
 
-/**
- * @brief Quality-trim and end-trim the input reads (single-end or paired), in place.
- *
- * For FASTQ input, runs `fastq_quality_trimmer` then trim_ends_fastq(); for
- * FASTA input, just runs trim_ends_fasta(). Rewrites single_end_file (or
- * forward_end_file/reverse_end_file) to point at the trimmed output --
- * since these are caller-owned buffers passed by pointer, the caller sees
- * the update (unlike the previous Options-by-value version, where this
- * rewrite was silently lost on return).
- * 
- * @param paired 1 if using paired-end reads.
- * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
- * @param single_end_file Single-end reads path; rewritten in place if paired == 0.
- * @param forward_end_file Forward reads path; rewritten in place if paired == 1.
- * @param reverse_end_file Reverse reads path; rewritten in place if paired == 1.
- */
-void clean_reads(int paired, int fasta_format, char *single_end_file, char *forward_end_file, char *reverse_end_file)
+char *get_fasta_or_fastq_prefix(const char *filepath)
 {
-	int i;
+    const char *file_ext = strrchr(filepath, '.');
+
+    if (strcmp(file_ext, ".fastq") != 0 && strcmp(file_ext, ".fasta") != 0 && strcmp(file_ext, ".fq") != 0 && strcmp(file_ext, ".fa") != 0)
+    {
+        return NULL;
+    }
+
+    size_t file_ext_len = strlen(file_ext);
+	size_t filepath_len = strlen(filepath);
+	size_t prefix_len = filepath_len - file_ext_len;
+
+	// allocate extra space for "_trimmed<1/2>.fast<a/q>" suffix and file extension
+    char *prefix = malloc(prefix_len + 16);
+
+    memcpy(prefix, filepath, prefix_len);
+    prefix[prefix_len] = '\0';
+
+    return prefix;
+}
+
+/**
+ * @brief 
+ * 
+ * @param single_end_filepath 
+ * @param forward_end_filepath 
+ * @param reverse_end_filepath 
+ * @param using_paired 
+ * @param using_fasta 
+ * @param fastq_trimmer_threshold 
+ */
+void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, int using_paired_end_reads, int using_fasta_format, int fastq_trimmer_threshold)
+{
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
-	if (paired == 0)
+
+	if (using_paired_end_reads)
 	{
-		char *prefix;
-		if (single_end_file[strlen(single_end_file) - 6] == '.' && single_end_file[strlen(single_end_file) - 5] == 'f' && single_end_file[strlen(single_end_file) - 4] == 'a' && single_end_file[strlen(single_end_file) - 3] == 's' && single_end_file[strlen(single_end_file) - 2] == 't' && (single_end_file[strlen(single_end_file) - 1] == 'q' || single_end_file[strlen(single_end_file) - 1] == 'a'))
-		{
-			prefix = (char *)malloc((strlen(single_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(single_end_file) - 6; i++)
-			{
-				prefix[i] = single_end_file[i];
-			}
-			for (i = strlen(single_end_file) - 6; i < strlen(single_end_file) - 6 + 15; i++)
-			{
-				prefix[i] = '\0';
-			}
-		}
-		else if (single_end_file[strlen(single_end_file) - 3] == '.' && single_end_file[strlen(single_end_file) - 2] == 'f' && (single_end_file[strlen(single_end_file) - 1] == 'q' || single_end_file[strlen(single_end_file) - 1] == 'a'))
-		{
-			prefix = (char *)malloc((strlen(single_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(single_end_file) - 3; i++)
-			{
-				prefix[i] = single_end_file[i];
-			}
-			for (i = strlen(single_end_file) - 3; i < strlen(single_end_file) - 3 + 15; i++)
-			{
-				prefix[i] = '\0';
-			}
-		}
-		else
+		char *forward_prefix = get_fasta_or_fastq_prefix(forward_end_filepath);
+		if (forward_prefix == NULL)
 		{
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		if (fasta_format == 0)
+		
+		if (using_fasta_format)
 		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", single_end_file, prefix);
+			trim_ends_fasta(forward_prefix);
+		}
+		else
+		{
+			sprintf(buffer, "fastq_quality_trimmer -v -t %d -i %s -o %s_trimmed1.fastq -Q33", fastq_trimmer_threshold, forward_end_filepath, forward_prefix);
 			system(buffer);
-			trim_ends_fastq(prefix);
+			trim_ends_fastq(forward_prefix);
+		}
+
+		char forward_suffix[16];
+		if (using_fasta_format)
+		{
+			strcpy(forward_suffix, "_trimmed2.fasta");
 		}
 		else
 		{
-			trim_ends_fasta(prefix);
+			strcpy(forward_suffix, "_trimmed2.fastq");
 		}
-		// sprintf(buffer, "fastx_trimmer -m 65 -t 15 -i %s_trimmed1.fastq -o %s_trimmed2.fastq",single_end_file,prefix);
-		// system(buffer);
-		// sprintf(buffer, "fastx_trimmer -f 15 -i %s_trimmed2.fastq -o %s_trimmed3.fastq",single_end_file,prefix);
-		// system(buffer);
-		char suffix[1000];
-		if (fasta_format == 0)
+		strcat(forward_prefix, forward_suffix);
+		strcpy(forward_end_filepath, forward_prefix);
+
+		free(forward_prefix);
+
+		char *reverse_prefix = get_fasta_or_fastq_prefix(reverse_end_filepath);
+		if (reverse_prefix == NULL)
 		{
-			strcpy(suffix, "_trimmed2.fastq");
+			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
+			exit(1);
+		}
+		
+		if (using_fasta_format)
+		{
+			trim_ends_fasta(reverse_prefix);
 		}
 		else
 		{
-			strcpy(suffix, "_trimmed2.fasta");
+			sprintf(buffer, "fastq_quality_trimmer -v -t %d -i %s -o %s_trimmed1.fastq -Q33", fastq_trimmer_threshold, reverse_end_filepath, reverse_prefix);
+			system(buffer);
+			trim_ends_fastq(reverse_prefix);
 		}
-		strcat(prefix, suffix);
-		strcpy(single_end_file, prefix);
-		free(prefix);
+
+		char reverse_suffix[16];
+		if (using_fasta_format)
+		{
+			strcpy(reverse_suffix, "_trimmed2.fasta");
+		}
+		else
+		{
+			strcpy(reverse_suffix, "_trimmed2.fastq");
+		}
+		strcat(reverse_prefix, reverse_suffix);
+		strcpy(reverse_end_filepath, reverse_prefix);
+
+		free(reverse_prefix);
 	}
 	else
 	{
-		char *prefix_forward;
-		if (forward_end_file[strlen(forward_end_file) - 6] == '.' && forward_end_file[strlen(forward_end_file) - 5] == 'f' && forward_end_file[strlen(forward_end_file) - 4] == 'a' && forward_end_file[strlen(forward_end_file) - 3] == 's' && forward_end_file[strlen(forward_end_file) - 2] == 't' && (forward_end_file[strlen(forward_end_file) - 1] == 'q' || forward_end_file[strlen(forward_end_file) - 1] == 'a'))
-		{
-			prefix_forward = (char *)malloc((strlen(forward_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(forward_end_file) - 6; i++)
-			{
-				prefix_forward[i] = forward_end_file[i];
-			}
-			for (i = strlen(forward_end_file) - 6; i < strlen(forward_end_file) - 6 + 15; i++)
-			{
-				prefix_forward[i] = '\0';
-			}
-		}
-		else if (forward_end_file[strlen(forward_end_file) - 3] == '.' && forward_end_file[strlen(forward_end_file) - 2] == 'f' && (forward_end_file[strlen(forward_end_file) - 1] == 'q' || forward_end_file[strlen(forward_end_file) - 1] == 'a'))
-		{
-			prefix_forward = (char *)malloc((strlen(forward_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(forward_end_file) - 3; i++)
-			{
-				prefix_forward[i] = forward_end_file[i];
-			}
-			for (i = strlen(forward_end_file) - 3; i < strlen(forward_end_file) - 3 + 15; i++)
-			{
-				prefix_forward[i] = '\0';
-			}
-		}
-		else
-		{
-			printf("Your reads don't end with .fastq, .fasta, .fa or .fq. Please decompress your files if they are gzipped.\n");
-			exit(1);
-		}
-		if (fasta_format == 0)
-		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", forward_end_file, prefix_forward);
-			system(buffer);
-			trim_ends_fastq(prefix_forward);
-		}
-		else
-		{
-			trim_ends_fasta(prefix_forward);
-		}
-		char suffix[1000];
-		if (fasta_format == 0)
-		{
-			strcpy(suffix, "_trimmed2.fastq");
-		}
-		else
-		{
-			strcpy(suffix, "_trimmed2.fasta");
-		}
-		strcat(prefix_forward, suffix);
-		strcpy(forward_end_file, prefix_forward);
-		free(prefix_forward);
-		char *prefix_reverse;
-		if (reverse_end_file[strlen(reverse_end_file) - 6] == '.' && reverse_end_file[strlen(reverse_end_file) - 5] == 'f' && reverse_end_file[strlen(reverse_end_file) - 4] == 'a' && reverse_end_file[strlen(reverse_end_file) - 3] == 's' && reverse_end_file[strlen(reverse_end_file) - 2] == 't' && (reverse_end_file[strlen(reverse_end_file) - 1] == 'q' || reverse_end_file[strlen(reverse_end_file) - 1] == 'a'))
-		{
-			prefix_reverse = (char *)malloc((strlen(reverse_end_file) - 6 + 15) * sizeof(char));
-			for (i = 0; i < strlen(reverse_end_file) - 6; i++)
-			{
-				prefix_reverse[i] = reverse_end_file[i];
-			}
-			for (i = strlen(reverse_end_file) - 6; i < strlen(reverse_end_file) - 6 + 15; i++)
-			{
-				prefix_reverse[i] = '\0';
-			}
-		}
-		else if (reverse_end_file[strlen(reverse_end_file) - 3] == '.' && reverse_end_file[strlen(reverse_end_file) - 2] == 'f' && (reverse_end_file[strlen(reverse_end_file) - 1] == 'q' || reverse_end_file[strlen(reverse_end_file) - 1] == 'a'))
-		{
-			prefix_reverse = (char *)malloc((strlen(reverse_end_file) - 3 + 15) * sizeof(char));
-			for (i = 0; i < strlen(reverse_end_file) - 3; i++)
-			{
-				prefix_reverse[i] = reverse_end_file[i];
-			}
-			for (i = strlen(reverse_end_file) - 3; i < strlen(reverse_end_file) - 3 + 15; i++)
-			{
-				prefix_reverse[i] = '\0';
-			}
-		}
-		else
+		char *prefix = get_fasta_or_fastq_prefix(single_end_filepath);
+		if (prefix == NULL)
 		{
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		if (fasta_format == 0)
+		
+		if (using_fasta_format)
 		{
-			sprintf(buffer, "fastq_quality_trimmer -v -t 35 -i %s -o %s_trimmed1.fastq -Q33", reverse_end_file, prefix_reverse);
-			system(buffer);
-			trim_ends_fastq(prefix_reverse);
+			trim_ends_fasta(prefix);
 		}
 		else
 		{
-			trim_ends_fasta(prefix_reverse);
+			sprintf(buffer, "fastq_quality_trimmer -v -t %d -i %s -o %s_trimmed1.fastq -Q33", fastq_trimmer_threshold, single_end_filepath, prefix);
+			system(buffer);
+			trim_ends_fastq(prefix);
 		}
-		strcat(prefix_reverse, suffix);
-		strcpy(reverse_end_file, prefix_reverse);
-		free(prefix_reverse);
-	}
-}
 
-/**
- * @brief Build the Bowtie2 index (if missing) and run Bowtie2 to produce sam_path.
- * @param paired 1 if using paired-end reads.
- * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
- * @param bowtie_reference_path Path to the reference genome to build/align against.
- * @param forward_end_file Forward reads path (paired mode).
- * @param reverse_end_file Reverse reads path (paired mode).
- * @param single_end_file Single-end reads path.
- * @param sam_path Output SAM file path.
- */
-void perform_bowtie_alignment(int paired, int fasta_format, char *bowtie_reference_path, char *forward_end_file, char *reverse_end_file, char *single_end_file, char *sam_path)
-{
-	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	memset(buffer, '\0', FASTA_MAXLINE);
+		char suffix[16];
+		if (using_fasta_format)
+		{
+			strcpy(suffix, "_trimmed2.fasta");
+		}
+		else
+		{
+			strcpy(suffix, "_trimmed2.fastq");
+		}
+		strcat(prefix, suffix);
+		strcpy(single_end_filepath, prefix);
 
-	sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
-	system(buffer);
-
-	if (paired == 1 && fasta_format == 1)
-	{
-		sprintf(buffer, "bowtie2 --all -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
-		system(buffer);
-	}
-	else if (paired == 0 && fasta_format == 1)
-	{
-		sprintf(buffer, "bowtie2 --all -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
-		system(buffer);
-	}
-	else if (paired == 1 && fasta_format == 0)
-	{
-		sprintf(buffer, "bowtie2 --all -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
-		system(buffer);
-	}
-	else if (paired == 0 && fasta_format == 0)
-	{
-		sprintf(buffer, "bowtie2 --all -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
-		system(buffer);
+		free(prefix);
 	}
 	free(buffer);
 }
 
 /**
- * @brief Same as perform_bowtie_alignment(), but with --xeq (extended CIGAR,
- * distinguishing '=' match from 'X' mismatch), used only for error-rate estimation.
- * @param paired 1 if using paired-end reads.
- * @param fasta_format 1 if reads are FASTA (vs. FASTQ).
- * @param bowtie_reference_path Path to the reference genome to build/align against.
- * @param forward_end_file Forward reads path (paired mode).
- * @param reverse_end_file Reverse reads path (paired mode).
- * @param single_end_file Single-end reads path.
- * @param sam_path Output SAM file path.
+ * @brief 
+ * 
+ * @param bowtie2_reference_path 
+ * @param single_end_filepath 
+ * @param forward_end_filepath 
+ * @param reverse_end_filepath 
+ * @param sam_results_filepath 
+ * @param using_paired_end_reads 
+ * @param using_fasta_format 
  */
-void perform_bowtie_alignment_xeq(int paired, int fasta_format, char *bowtie_reference_path, char *forward_end_file, char *reverse_end_file, char *single_end_file, char *sam_path)
+void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, int using_paired_end_reads, int using_fasta_format)
 {
 	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
 	memset(buffer, '\0', FASTA_MAXLINE);
 
-	sprintf(buffer, "bowtie2-build -f %s %s", bowtie_reference_path, bowtie_reference_path);
+	sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, bowtie2_reference_path);
 	system(buffer);
 
-	if (paired == 1 && fasta_format == 1)
+	if (using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
-		system(buffer);
+		sprintf(buffer, "bowtie2 --all -f -x %s -1 %s -2 %s -S %s", bowtie2_reference_path, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
-	else if (paired == 0 && fasta_format == 1)
+	else if (!using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
-		system(buffer);
+		sprintf(buffer, "bowtie2 --all -f -x %s -U %s -S %s", bowtie2_reference_path, single_end_filepath, sam_results_filepath);
 	}
-	else if (paired == 1 && fasta_format == 0)
+	else if (using_paired_end_reads && !using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -x %s -1 %s -2 %s -S %s", bowtie_reference_path, forward_end_file, reverse_end_file, sam_path);
-		system(buffer);
+		sprintf(buffer, "bowtie2 --all -x %s -1 %s -2 %s -S %s", bowtie2_reference_path, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
-	else if (paired == 0 && fasta_format == 0)
+	else
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -x %s -U %s -S %s", bowtie_reference_path, single_end_file, sam_path);
-		system(buffer);
+		sprintf(buffer, "bowtie2 --all -x %s -U %s -S %s", bowtie2_reference_path, single_end_filepath, sam_results_filepath);
+		
 	}
+	system(buffer);
 	free(buffer);
 }
+
+/**
+ * @brief 
+ * 
+ * @param bowtie2_reference_path 
+ * @param single_end_filepath 
+ * @param forward_end_filepath 
+ * @param reverse_end_filepath 
+ * @param sam_results_filepath 
+ * @param using_paired_end_reads 
+ * @param using_fasta_format 
+ */
+void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, int using_paired_end_reads, int using_fasta_format)
+{
+	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
+	memset(buffer, '\0', FASTA_MAXLINE);
+
+	sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, bowtie2_reference_path);
+	system(buffer);
+
+	if (using_paired_end_reads && using_fasta_format)
+	{
+		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -1 %s -2 %s -S %s", bowtie2_reference_path, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+	}
+	else if (!using_paired_end_reads && using_fasta_format)
+	{
+		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -U %s -S %s", bowtie2_reference_path, single_end_filepath, sam_results_filepath);
+	}
+	else if (using_paired_end_reads && !using_fasta_format)
+	{
+		sprintf(buffer, "bowtie2 --all --xeq -x %s -1 %s -2 %s -S %s", bowtie2_reference_path, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+	}
+	else
+	{
+		sprintf(buffer, "bowtie2 --all --xeq -x %s -U %s -S %s", bowtie2_reference_path, single_end_filepath, sam_results_filepath);
+		
+	}
+	system(buffer);
+	free(buffer);
+}
+
 
 /**
  * @brief Estimate whether reads need quality/end trimming, from an --xeq SAM file.
@@ -1236,11 +1128,11 @@ int main(int argc, char **argv)
 		printf("Length of MSA index %d: %d\n", ref_idx, length_of_MSA);
 
 		// TODO: implement the process_problematic_sites() function to read in problematic sites from a file (similar to variant sites)
-		/*int* problematic_sites = (int*)malloc(1000*sizeof(int));
-		for(i=0; i<1000; i++){
-			problematic_sites[i]=-1;
-		}
-		int number_of_problematic_sites=process_problematic_sites(problematic_sites);*/
+		// int* problematic_sites = (int*)malloc(1000*sizeof(int));
+		// for(i=0; i<1000; i++){
+		// 	problematic_sites[i]=-1;
+		// }
+		// int number_of_problematic_sites=process_problematic_sites(problematic_sites);
 		
 		if ((MSA_file = gzopen(MSA_paths[ref_idx], "r")) == Z_NULL)
 			fprintf(stderr, "MSA index %d File could not be opened.\n", ref_idx);
@@ -1274,20 +1166,20 @@ int main(int argc, char **argv)
 		printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
 		// TODO: eventually implement the removal of identical strains for speedup/optimization
-		/*int* identical = (int *)malloc(number_of_strains*sizeof(int));
-		int number_of_identical_strains=number_of_strains;
-		if (opt.remove_identical==0){
-			for(i=0; i<number_of_strains; i++){
-				identical[i]=i;
-			}
-		}*/
+		// int* identical = (int *)malloc(number_of_strains*sizeof(int));
+		// int number_of_identical_strains=number_of_strains;
+		// if (opt.remove_identical==0){
+		// 	for(i=0; i<number_of_strains; i++){
+		// 		identical[i]=i;
+		// 	}
+		// }
 		// if (opt.remove_identical==1){
 		//	printf("Finding identical sequences\n");
 		//	clock_gettime(CLOCK_MONOTONIC, &tstart);
 		//	for(i=0; i<number_of_strains; i++){
 		//		identical[i]=-1;
 		//	}
-		//	number_of_identical_strains=removeIdenticalStrains(number_of_strains,length_of_MSA,MSA,identical,names_of_strains,max_name_length);
+		//	number_of_identical_strains=remove_identical_strains(number_of_strains,length_of_MSA,MSA,identical,names_of_strains,max_name_length);
 		//	clock_gettime(CLOCK_MONOTONIC, &tend);
 		//	printf("Took %.5fsec\n",((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec));
 		// }

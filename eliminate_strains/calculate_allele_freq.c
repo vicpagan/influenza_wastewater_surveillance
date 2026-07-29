@@ -1,909 +1,331 @@
 #include "calculate_allele_freq.h"
 
-/**
- * @brief Compute per-site allele frequencies from paired-end reads, then iteratively
- * eliminate reference strains incompatible with those frequencies.
- *
- * Three stages, in order:
- *  1. Walk the SAM file read-pair by read-pair, tallying A/C/G/T counts (and deletions)
- *     at each MSA site the reads cover, translating SAM positions to MSA columns via
- *     reference_index[]. Overlapping mate pairs are only counted once (see `visited`).
- *  2. Convert counts to frequencies, drop sites below `coverage`, and mark any base
- *     with frequency < freq_threshold as "bad" at that site.
- *  3. Iteratively remove (blank the name of) any strain carrying too many "bad" bases
- *     at the variant sites, growing the incompatibility tolerance each pass until the
- *     number of strains remaining falls within [min_strains_remaining, max_strains_remaining).
- *
- * @param sam Open SAM file (paired-end alignments).
- * @param allele Output/scratch: per-site A/C/G/T counts, then converted to frequencies.
- * @param length_of_MSA Number of MSA columns.
- * @param MSA Numerically-coded... (actually char-coded) alignment; see names_of_strains.
- * @param number_of_strains Total strains before elimination.
- * @param names_of_strains Strain names; eliminated strains get their name blanked.
- * @param freq_threshold Below this frequency, a base is "bad" at a site.
- * @param maxname Length of each name buffer.
- * @param tstart Scratch timing variable (reused internally).
- * @param tend Scratch timing variable (reused internally).
- * @param number_of_variant_sites Length of variant_sites.
- * @param variant_sites Sites to check for strain elimination; entries get set to -1
- * if not adequately covered.
- * @param coverage Minimum read depth to trust a site's allele frequency.
- * @param reference_index Maps SAM alignment position -> MSA column (see align_reference.c).
- * @param min_strains_remaining Lower bound on strains remaining; loop stops once reached.
- * @param max_strains_remaining Upper bound; exceeding this aborts the whole program.
- * @param print_counts If non-empty, path to dump per-site allele counts.
- * @param max_sam_length Output: [0] = longest raw SAM line seen, [1] = number of SAM records.
- * @param print_deletions If non-empty, path to dump sites with deletion frequency above threshold.
- * @param deletion_threshold Frequency threshold for reporting a deletion site.
- * @param sam_results_out Output: newly allocated array of every raw SAM
- * line read (same format readInSamFile() would produce), so callers can reuse
- * it later without a second disk read. Pass NULL to skip caching.
- * @param num_sam_lines_out Output: number of lines in sam_results_out.
- * 
- * @return Number of strains remaining after elimination.
- */
-int calculateAlleleFreq_paired(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length)
+void read_in_covered_bases()
 {
-	int i, j;
-	char buffer[FASTA_MAXLINE];
-	char *s;
-	int cigar[MAX_CIGAR];
-	char cigar_chars[MAX_CIGAR];
-	for (i = 0; i < MAX_CIGAR; i++)
-	{
-		cigar[i] = 0;
-		cigar_chars[i] = '\0';
-	}
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	int first_in_pair = 0;
-	int second_in_pair = 0;
-	int first_seq_length = 0;
-	int first_seq_cigar[MAX_CIGAR];
-	char first_seq_cigar_chars[MAX_CIGAR];
-	int first_seq_cigar_char_count = 0;
-	char *first_seq = (char *)malloc(MAX_READ_LENGTH * sizeof(char));
-	memset(first_seq, '\0', MAX_READ_LENGTH);
-	int first_end_pos = 0;
-	int first_seq_start_pos = 0;
-	int visited[MAX_READ_LENGTH];
-	// memset(visited,-1,MAX_READ_LENGTH);
-	for (i = 0; i < MAX_READ_LENGTH; i++)
-	{
-		visited[i] = -1;
-	}
-	double *deletions = (double *)malloc((length_of_MSA + 1) * sizeof(double));
-	for (i = 0; i < length_of_MSA + 1; i++)
-	{
-		deletions[i] = 0;
-	}
-	
-	char **cached_sam_results = NULL;
-	int cached_capacity = 0;
-	int cached_num_sam_lines = 0;
 
-	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read pair ---
-	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
-	{
-		if (buffer[0] != '@')
-		{
-			if (sam_results != NULL)
-			{
-				if (cached_num_sam_lines == cached_capacity)
-				{
-					cached_capacity = cached_capacity == 0 ? 1024 : cached_capacity * 2;
-					cached_sam_results = (char **)realloc(cached_sam_results, cached_capacity * sizeof(char *));
-				}
-				cached_sam_results[cached_num_sam_lines] = strdup(buffer);
-				cached_num_sam_lines++;
-			}
-			char *buffer_copy = strdup(buffer);
-			int length_of_sam = strlen(buffer);
-			if (length_of_sam > *max_sam_line_length)
-			{
-				*max_sam_line_length = length_of_sam;
-			}
-			s = strtok(buffer, "\t");
-			// char* name = strdup(s);
-			s = strtok(NULL, "\t");
-			int decimal = 0;
-			sscanf(s, "%d", &decimal);
-			decimal = dec2bin(decimal);
-			if (decimal == 1)
-			{
-				first_in_pair = 1;
-			}
-			else if (decimal == 0)
-			{
-				second_in_pair = 1;
-			}
-			// free(name);
-			for (i = 0; i < 2; i++)
-			{
-				s = strtok(NULL, "\t");
-			}
-			int position = 0;
-			sscanf(s, "%d", &position);
-			position--;
-			if (first_in_pair == 1)
-			{
-				first_seq_start_pos = position;
-			}
-			s = strtok(NULL, "\t");
-			s = strtok(NULL, "\t");
-			char *cigar_string;
-			cigar_string = strdup(s);
-			// printf("%s\n",cigar_string);
-			if (strcmp(cigar_string, "*") != 0)
-			{
-				char *copy = strdup(cigar_string);
-				char *res = strtok(cigar_string, "MID");
-				int index = 0;
-				while (res)
-				{
-					int from = res - cigar_string + strlen(res);
-					// printf("%s\n",res);
-					int cigar_count = 0;
-					sscanf(res, "%d", &cigar_count);
-					// printf("%d\n",cigar_count);
-					res = strtok(NULL, "MID");
-					int to = res != NULL ? res - cigar_string : strlen(copy);
-					// printf("%.*s\n", to-from, copy+from);
-					char cigar_char = '\0';
-					sscanf(copy + from, "%c", &cigar_char);
-					// printf("cigar char: %c\n",cigar_char);
-					cigar[index] = cigar_count;
-					if (first_in_pair == 1)
-					{
-						first_seq_cigar[index] = cigar_count;
-					}
-					cigar_chars[index] = cigar_char;
-					if (first_in_pair == 1)
-					{
-						first_seq_cigar_chars[index] = cigar_char;
-					}
-					index++;
-				}
-				// printf("%s\n",cigar_string);
-				free(copy);
-				// printf("S: %s\n",buffer_copy);
-				s = strtok(buffer_copy, "\t");
-				// printf("S: %s\n",s);
-				for (i = 0; i < 9; i++)
-				{
-					s = strtok(NULL, "\t");
-				}
-				char *sequence = s;
-				if (first_in_pair == 1)
-				{
-					strcpy(first_seq, sequence);
-					first_seq_length = strlen(first_seq);
-				}
-				int cigar_char_count = index;
-				if (first_in_pair == 1)
-				{
-					first_seq_cigar_char_count = index;
-				}
-				double alignment_score = 0;
-				int matches = 0;
-				int ns = 0;
-				int is = 0;
-				for (i = 0; i < cigar_char_count; i++)
-				{
-					if (cigar_chars[i] == 'M')
-					{
-						matches = matches + cigar[i];
-					}
-					if (cigar_chars[i] == 'I')
-					{
-						ns = ns + cigar[i];
-					}
-					if (cigar_chars[i] == 'N')
-					{
-						is = is + cigar[i];
-					}
-				}
-				if (cigar_char_count > 0)
-				{
-					alignment_score = matches / (matches + ns + is);
-				}
-				index = 0;
-				int start = 0;
-				int start_ref = 0;
-				int k = 0;
-				int l = 0;
-				int visited_place = 0;
-				if (second_in_pair == 1 /*&& alignment_score > 0.8*/)
-				{
-					int start_ref1 = 0;
-					int start1 = 0;
-					for (i = 0; i < first_seq_cigar_char_count; i++)
-					{
-						for (j = 0; j < first_seq_cigar[i]; j++)
-						{
-							int position_in_MSA = reference_index[start_ref1 + first_seq_start_pos + j];
-							if (position_in_MSA != -1 && position_in_MSA >= position)
-							{
-								int start2 = 0;
-								int start_ref2 = 0;
-								for (k = 0; k < cigar_char_count; k++)
-								{
-									for (l = 0; l < cigar[k]; l++)
-									{
-										if (position_in_MSA != -1 && position_in_MSA == reference_index[start_ref2 + position + l] && cigar_chars[k] == 'M' && first_seq_cigar_chars[i] == 'M')
-										{
-											if (first_seq[start1 + j] != sequence[start2 + l] && first_seq_start_pos + j <= variant_sites[number_of_variant_sites - 1])
-											{
-												if (first_seq[start1 + j] == 'A' || first_seq[start1 + j] == 'a')
-												{
-													allele[position_in_MSA][0]--;
-												}
-												else if (first_seq[start1 + j] == 'G' || first_seq[start1 + j] == 'g')
-												{
-													allele[position_in_MSA][1]--;
-												}
-												else if (first_seq[start1 + j] == 'C' || first_seq[start1 + j] == 'c')
-												{
-													allele[position_in_MSA][2]--;
-												}
-												else if (first_seq[start1 + j] == 'T' || first_seq[start1 + j] == 't')
-												{
-													allele[position_in_MSA][3]--;
-												}
-											}
-											visited[visited_place] = position_in_MSA;
-											visited_place++;
-										}
-									}
-									if (cigar_chars[k] == 'M')
-									{
-										start2 = start2 + cigar[k];
-										start_ref2 = start_ref2 + cigar[k];
-									}
-									if (cigar_chars[k] == 'I')
-									{
-										start2 = start2 + cigar[k];
-									}
-									if (cigar_chars[k] == 'D')
-									{
-										start_ref2 = start_ref2 + cigar[k];
-									}
-								}
-							}
-						}
-						if (first_seq_cigar_chars[i] == 'M')
-						{
-							start1 = start1 + first_seq_cigar[i];
-							start_ref1 = start_ref1 + first_seq_cigar[i];
-						}
-						if (first_seq_cigar_chars[i] == 'I')
-						{
-							start1 = start1 + first_seq_cigar[i];
-						}
-						if (first_seq_cigar_chars[i] == 'D')
-						{
-							start_ref1 = first_seq_cigar[i] + start_ref1;
-						}
-					}
-				}
-				// if ( alignment_score > 0.8){
-				for (i = 0; i < cigar_char_count; i++)
-				{
-					// printf("cigar[%d]=%d\n",i,cigar[i]);
-					for (j = 0; j < cigar[i]; j++)
-					{
-						// printf("cigar_chars[%d]: %c\n",i,cigar_chars[i]);
-						int skip = 0;
-						int position_in_MSA = reference_index[j + start_ref + position];
-						for (k = 0; k < visited_place; k++)
-						{
-							if (position_in_MSA != -1 && visited[k] == position_in_MSA)
-							{
-								skip = 1;
-							}
-						}
-						if (cigar_chars[i] == 'M' /*|| cigar_chars[i] == 'I'*/)
-						{
-							if (sequence[j + start] == 'A' || sequence[j + start] == 'a')
-							{
-								// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-								//	allele[reference[j+start_ref+position]][0]++;
-								// }
-								if (position_in_MSA != -1 && position_in_MSA < length_of_MSA && skip == 0)
-								{
-									allele[position_in_MSA][0]++;
-								}
-							}
-							else if (sequence[j + start] == 'G' || sequence[j + start] == 'g')
-							{
-								// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-								//	allele[reference[j+start_ref+position]][1]++;
-								// }
-								if (position_in_MSA != -1 && position_in_MSA < length_of_MSA && skip == 0)
-								{
-									allele[position_in_MSA][1]++;
-								}
-							}
-							else if (sequence[j + start] == 'C' || sequence[j + start] == 'c')
-							{
-								// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-								//	allele[reference[j+start_ref+position]][2]++;
-								// }
-								if (position_in_MSA != -1 && position_in_MSA < length_of_MSA && skip == 0)
-								{
-									allele[position_in_MSA][2]++;
-								}
-							}
-							else if (sequence[j + start] == 'T' || sequence[j + start] == 't')
-							{
-								// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-								//	allele[reference[j+start_ref+position]][3]++;
-								// }
-								if (position_in_MSA != -1 && position_in_MSA < length_of_MSA && skip == 0)
-								{
-									allele[position_in_MSA][3]++;
-								}
-							}
-							first_end_pos = position_in_MSA;
-						}
-						if (cigar_chars[i] == 'I')
-						{
-							first_end_pos = position_in_MSA;
-						}
-						if (cigar_chars[i] == 'D')
-						{
-							printf("POS: %d\n", position_in_MSA);
-							if (position_in_MSA != -1)
-							{
-								deletions[position_in_MSA]++;
-							}
-						}
-					}
-					if (cigar_chars[i] == 'M')
-					{
-						start = cigar[i] + start;
-						start_ref = cigar[i] + start_ref;
-					}
-					if (cigar_chars[i] == 'I')
-					{
-						start = cigar[i] + start;
-					}
-					if (cigar_chars[i] == 'D')
-					{
-						start_ref = cigar[i] + start_ref;
-					}
-				}
-			}
-			//}
-			free(buffer_copy);
-			free(cigar_string);
-			if (second_in_pair == 1)
-			{
-				memset(first_seq, '\0', MAX_READ_LENGTH);
-				first_seq_cigar_char_count = 0;
-			}
-			first_in_pair = 0;
-			second_in_pair = 0;
-		}
-	}
-	free(first_seq);
-	if (print_deletions[0] != '\0')
-	{
-		FILE *deletion_sites_file;
-		if ((deletion_sites_file = fopen(print_deletions, "w")) == (FILE *)NULL)
-			fprintf(stderr, "Deletion sites file could not be opened.\n");
-		fprintf(deletion_sites_file, "Site\tFrequency\n");
-		for (i = 0; i < length_of_MSA; i++)
-		{
-			// double deletion_freq;
-			// deletion_freq = deletions[i]/max_sam_length[1];
-			if (deletions[i] / *max_sam_line_length > deletion_threshold)
-			{
-				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / *max_sam_line_length);
-			}
-		}
-		fclose(deletion_sites_file);
-	}
-	// free(deletions);
-	// --- Stage 2: convert counts to frequencies, drop low-coverage sites, mark "bad" bases ---
-	int covered = 0;
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		double total = 0;
-		for (j = 0; j < 4; j++)
-		{
-			total = total + allele[i][j];
-		}
-		if (total > 0)
-		{
-			covered++;
-		}
-	}
-	int *covered_sites = (int *)malloc(covered * sizeof(int));
-	for (i = 0; i < covered; i++)
-	{
-		covered_sites[i] = -1;
-	}
-	int k = 0;
-	if (print_counts[0] != '\0')
-	{
-		FILE *allele_counts_file;
-		if ((allele_counts_file = fopen(print_counts, "w")) == (FILE *)NULL)
-			fprintf(stderr, "Allele Counts file could not be opened.\n");
-		fprintf(allele_counts_file, "position\tA\tG\tC\tT\n");
-		for (i = 0; i < length_of_MSA; i++)
-		{
-			fprintf(allele_counts_file, "%d\t%lf\t%lf\t%lf\t%lf\n", i, allele[i][0], allele[i][1], allele[i][2], allele[i][3]);
-		}
-		fclose(allele_counts_file);
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		double total = 0;
-		for (j = 0; j < 4; j++)
-		{
-			total = total + allele[i][j];
-		}
-		if (total >= coverage)
-		{
-			covered_sites[k] = i;
-			k++;
-		}
-		for (j = 0; j < 4; j++)
-		{
-			allele[i][j] = allele[i][j] / total;
-		}
-	}
-	printf("Number of sites not covered: %d\n", length_of_MSA - k);
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		int found = 0;
-		for (j = 0; j < covered; j++)
-		{
-			if (variant_sites[i] == covered_sites[j])
-			{
-				found = 1;
-			}
-		}
-		if (found == 0)
-		{
-			variant_sites[i] = -1;
-		}
-	}
-	free(covered_sites);
-	int temp_num_var_sites = 0;
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		if (variant_sites[i] >= 0 && variant_sites[i] < length_of_MSA - 1)
-		{
-			temp_num_var_sites++;
-		}
-	}
-	int *variant_sites_updated = (int *)malloc(temp_num_var_sites * sizeof(int));
-	k = 0;
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		if (variant_sites[i] != -1 && variant_sites[i] < length_of_MSA - 1)
-		{
-			variant_sites_updated[k] = variant_sites[i];
-			k++;
-		}
-	}
-	free(variant_sites);
-	int **bad_bases = (int **)malloc(length_of_MSA * sizeof(int *));
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		bad_bases[i] = (int *)malloc(4 * sizeof(int));
-		for (j = 0; j < 4; j++)
-		{
-			bad_bases[i][j] = 0;
-		}
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		for (j = 0; j < 4; j++)
-		{
-			if (allele[i][j] < freq_threshold)
-			{
-				bad_bases[i][j] = 1;
-			}
-		}
-	}
-	int *bad_bases_count = (int *)malloc(length_of_MSA * sizeof(int));
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		bad_bases_count[i] = 0;
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		for (j = 0; j < 4; j++)
-		{
-			bad_bases_count[i] += bad_bases[i][j];
-		}
-	}
-	char **bad_base_char = (char **)malloc(length_of_MSA * sizeof(char *));
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		bad_base_char[i] = (char *)malloc(4 * sizeof(char));
-		for (j = 0; j < 4; j++)
-		{
-			bad_base_char[i][j] = '\0';
-		}
-	}
- 
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		j = 0;
-		// for(j=0; j<4-bad_bases_count[i]; j++){
-		for (k = 0; k < 4; k++)
-		{
-			if (bad_bases[i][k] == 0)
-			{
-				if (k == 0)
-				{
-					bad_base_char[i][j] = 'A';
-					j++;
-				}
-				else if (k == 1)
-				{
-					bad_base_char[i][j] = 'G';
-					j++;
-				}
-				else if (k == 2)
-				{
-					bad_base_char[i][j] = 'C';
-					j++;
-				}
-				else if (k == 3)
-				{
-					bad_base_char[i][j] = 'T';
-					j++;
-				}
-				bad_bases[i][k] = 1;
-			}
-		}
-		//}
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		free(bad_bases[i]);
-	}
-	free(bad_bases);
-	// int length_of_reference = 0;
-	// for (i=0; i<length_of_MSA; i++){
-	//	if ( reference[i]==-1 ){
-	//		break;
-	//	}else{
-	//		length_of_reference++;
-	//	}
-	// }
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	// --- Stage 3: iteratively eliminate strains incompatible with the "bad" bases above ---
-	int number_remaining = number_of_strains;
-	int base;
-	int count;
-	int var_count = 0;
-	int number_removed = 0;
-	int run_loop = 1;
-	int number_of_iterations = 1;
-	int *incompat_counter = (int *)malloc(number_of_strains * sizeof(int));
-	for (i = 0; i < number_of_strains; i++)
-	{
-		incompat_counter[i] = 0;
-	}
-	while (run_loop == 1)
-	{
-		printf("iteration %d\n", number_of_iterations);
-		for (i = 0; i < number_of_strains; i++)
-		{
-			incompat_counter[i] = 0;
-		}
-		number_remaining = number_of_strains;
-		for (i = 0; i < temp_num_var_sites; i++)
-		{
-			number_removed = 0;
-			for (j = 0; j < number_of_strains; j++)
-			{
-				/*if ( MSA[identical[j]][reference[i]] != '-' ){
-					int base;
-					if ( MSA[identical[j]][reference[i]] == 'A' ){
-						base=0;
-					}else if ( MSA[identical[j]][reference[i]] == 'G' ){
-						base=1;
-					}else if ( MSA[identical[j]][reference[i]] == 'C' ){
-						base=2;
-					}else if ( MSA[identical[j]][reference[i]] == 'T' ){
-						base=3;
-					}
-					if ( allele[reference[i]][base] < freq_threshold ){
-						//memset(names_of_strains[identical[j]],'\0',maxname);
-						names_of_strains[identical[j]][0] = '\0';
-					}
-				}*/
-				// if ( names_of_strains[j][0] != '\0'){
-				if (incompat_counter[j] < number_of_iterations)
-				{
-					count = 0;
-					for (k = 0; k < 4 - bad_bases_count[variant_sites_updated[i]]; k++)
-					{
-						if (MSA[j][variant_sites_updated[i]] != bad_base_char[variant_sites_updated[i]][k])
-						{
-							count++;
-						}
-					}
-					if (count == (4 - bad_bases_count[variant_sites_updated[i]]))
-					{
-						/*if ( number_remaining ==1 ){
-							printf("site %d\n",variant_sites_updated[i]);
-							printf("last one: %s\n",names_of_strains[j]);
-							printf("MSA[%d][%d]: %c\n",j,variant_sites_updated[i],MSA[j][variant_sites_updated[i]]);
-							printf("bad_base_char[%d][0]: %c\n",variant_sites_updated[i],bad_base_char[variant_sites_updated[i]][0]);
-						}*/
-						// printf("removing %d: %s at site %d\n",j,names_of_strains[j],variant_sites_updated[i]);
-						// if ( strcmp(names_of_strains[j],"EPI_ISL_4510987")==0){
-						//	printf("removing %d: %s at site %d\n",j,names_of_strains[j],variant_sites_updated[i]);
-						// }
-						// names_of_strains[j][0] = '\0';
-						// if ( incompat_counter[j]==number_of_iterations){
-						// number_remaining--;
-						// number_removed++;
-						incompat_counter[j]++;
-						//}
-					}
-				}
-			}
-		}
-		for (i = 0; i < number_of_strains; i++)
-		{
-			if (incompat_counter[i] == number_of_iterations)
-			{
-				number_remaining--;
-				number_removed++;
-			}
-		}
-		if (number_remaining >= min_strains_remaining && number_remaining < max_strains_remaining)
-		{
-			printf("exiting loop. %d remaining\n", number_remaining);
-			run_loop = 0;
-		}
-		else if (number_remaining >= max_strains_remaining)
-		{
-			printf("%d strains remaining. exiting...\n", number_remaining);
-			exit(1);
-		}
-		else
-		{
-			printf("there are %d remaining... \n", number_remaining);
-			number_of_iterations++;
-		}
-	}
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	for (i = 0; i < number_of_strains; i++)
-	{
-		if (incompat_counter[i] == number_of_iterations)
-		{
-			names_of_strains[i][0] = '\0';
-		}
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		free(bad_base_char[i]);
-	}
-	free(bad_base_char);
-	free(bad_bases_count);
-	free(variant_sites_updated);
-	number_remaining = 0;
-	for (i = 0; i < number_of_strains; i++)
-	{
-		if (names_of_strains[i][0] != '\0')
-		{
-			// printf("Remaining strain: %s\n",names_of_strains[i]);
-			number_remaining++;
-		}
-	}
-	printf("Number remaining: %d\n", number_remaining);
-	free(incompat_counter);
-	if (sam_results != NULL)
-	{
-		if (cached_num_sam_lines > 0 && cached_capacity > cached_num_sam_lines)
-		{
-			char **cached_sam_results = realloc(cached_sam_results, cached_num_sam_lines * sizeof(char *));
-		}
-		*sam_results = cached_sam_results;
-		*num_sam_lines = cached_num_sam_lines;
-	}
-	return number_remaining;
 }
 
 /**
- * @brief Single-end counterpart of calculateAlleleFreq_paired(): same three stages
- * (tally allele counts -> threshold "bad" bases -> iteratively eliminate strains),
- * without the mate-pair overlap handling paired-end reads need.
- * @see calculateAlleleFreq_paired for full parameter documentation (identical here),
- * including sam_results_out/num_sam_lines_out.
+ * @brief 
+ * 
+ * @param allele 
+ * @param msa_str 
+ * @param freq_threshold 
+ * @param tstart 
+ * @param tend 
+ * @param coverage 
+ * @param min_strains_remaining 
+ * @param max_strains_remaining 
+ * @param output_allele_counts 
+ * @param allele_counts_output_filepath 
+ * @param output_deletions 
+ * @param deletions_output_filepath 
+ * @param deletion_threshold 
+ * @param reference_data_str 
+ * @return int 
  */
-int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MSA, int number_of_strains, char **names_of_strains, double freq_threshold, int maxname, struct timespec tstart, struct timespec tend, int number_of_variant_sites, int *variant_sites, int coverage, int *reference_index, int min_strains_remaining, int max_strains_remaining, char print_counts[], char print_deletions[], double deletion_threshold, char ***sam_results, int *num_sam_lines, int *max_sam_line_length)
+int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str)
 {
-	int i, j;
-	char buffer[FASTA_MAXLINE];
-	char *s;
-	int cigar[MAX_CIGAR];
-	char cigar_chars[MAX_CIGAR];
-	for (i = 0; i < MAX_CIGAR; i++)
-	{
-		cigar[i] = 0;
-		cigar_chars[i] = '\0';
-	}
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	double *deletions = (double *)malloc((length_of_MSA + 1) * sizeof(double));
-	for (i = 0; i < length_of_MSA + 1; i++)
-	{
-		deletions[i] = 0;
-	}
+	int i, j, k;
+	int msa_sequence_length = msa_str->sequence_length;
 
-	char **cached_sam_results = NULL;
-	int cached_capacity = 0;
-	int cached_num_sam_lines = 0;
-	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read ---
-	while (fgets(buffer, FASTA_MAXLINE, sam) != NULL)
+	char first_copy[FASTA_MAXLINE];
+	char second_copy[FASTA_MAXLINE];
+	char first_sam_line_cigar[FASTA_MAXLINE];
+	char second_sam_line_cigar[FASTA_MAXLINE];
+	char *first_sam_fields[11];
+	char *second_sam_fields[11];
+
+	char *first_sequence = (char *)calloc(MAX_READ_LENGTH, sizeof(char));
+	int first_cigar_vals[MAX_CIGAR] = {0};
+	char first_cigar_chars[MAX_CIGAR] = {'\0'};
+
+	char *second_sequence = (char *)calloc(MAX_READ_LENGTH, sizeof(char));
+	int second_cigar_vals[MAX_CIGAR] = {0};
+	char second_cigar_chars[MAX_CIGAR] = {'\0'};
+
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+	int *deletions = (int *)calloc((msa_sequence_length), sizeof(int));
+
+	int first_msa_positions[MAX_READ_LENGTH];
+	char first_bases[MAX_READ_LENGTH];
+	int second_msa_positions[MAX_READ_LENGTH];
+	char second_bases[MAX_READ_LENGTH];
+	int merged_msa_positions[2 * MAX_READ_LENGTH];
+	char merged_bases[2 * MAX_READ_LENGTH];
+
+	SAMResults sam_results_str = reference_data_str->sam_results_str;
+	int *reference_index = reference_data_str->reference_index;
+
+	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read pair ---
+	for (i = 0; i < sam_results_str.num_sam_lines; i += 2)
 	{
-		if (buffer[0] != '@')
+		int skip_reads = 0;
+
+		strcpy(first_copy, sam_results_str.sam_results[i]);
+		strcpy(second_copy, sam_results_str.sam_results[i + 1]);
+
+		char *first_token = strtok(first_copy, "\t");
+		char *second_token = strtok(second_copy, "\t");
+
+		j = 0;
+		while (first_token != NULL && j < 11)
 		{
-			if (sam_results != NULL)
-			{
-				if (cached_num_sam_lines == cached_capacity)
-				{
-					cached_capacity = cached_capacity == 0 ? 1024 : cached_capacity * 2;
-					cached_sam_results = (char **)realloc(cached_sam_results, cached_capacity * sizeof(char *));
-				}
-				cached_sam_results[cached_num_sam_lines] = strdup(buffer);
-				cached_num_sam_lines++;
-			}
-			char *buffer_copy = strdup(buffer);
-			int length_of_sam = strlen(buffer);
-			if (length_of_sam > *max_sam_line_length)
-			{
-				*max_sam_line_length = length_of_sam;
-			}
-			s = strtok(buffer, "\t");
-			for (i = 0; i < 3; i++)
-			{
-				s = strtok(NULL, "\t");
-			}
-			int position = 0;
-			sscanf(s, "%d", &position);
-			position--;
-			s = strtok(NULL, "\t");
-			s = strtok(NULL, "\t");
-			char *cigar_string;
-			cigar_string = strdup(s);
-			char *copy = strdup(cigar_string);
-			char *res = strtok(cigar_string, "MID");
+			first_sam_fields[j] = first_token;
+			j++;
+			first_token = strtok(NULL, "\t");
+		}
+
+		j = 0;
+		while (second_token != NULL && j < 11)
+		{
+			second_sam_fields[j] = second_token;
+			j++;
+			second_token = strtok(NULL, "\t");
+		}
+
+		int first_sam_line_flags = atoi(first_sam_fields[1]);
+		int second_sam_line_flags = atoi(second_sam_fields[1]);
+		int first_line_forward_read = parse_sam_flags(first_sam_line_flags);
+		if (first_line_forward_read != 1 && first_line_forward_read != 0)
+		{
+			skip_reads = 1;
+		}
+
+		int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
+		int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
+
+		if (!skip_reads)
+		{
+			strcpy(first_sam_line_cigar, first_sam_fields[5]);
+
+			int first_num_cigar_chars = 0;
+			int cigar_counter = 0;
 			int index = 0;
-			while (res)
+			for (j = 0; first_sam_line_cigar[j] != '\0'; j++)
 			{
-				int from = res - cigar_string + strlen(res);
-				int cigar_count = 0;
-				sscanf(res, "%d", &cigar_count);
-				res = strtok(NULL, "MID");
-				int to = res != NULL ? res - cigar_string : strlen(copy);
-				char cigar_char = '\0';
-				sscanf(copy + from, "%c", &cigar_char);
-				cigar[index] = cigar_count;
-				cigar_chars[index] = cigar_char;
-				index++;
-			}
-			free(copy);
-			free(cigar_string);
-			s = strtok(buffer_copy, "\t");
-			for (i = 0; i < 9; i++)
-			{
-				s = strtok(NULL, "\t");
-			}
-			int cigar_char_count = index;
-			int start = 0;
-			int start_ref = 0;
-			char *sequence = s;
-			for (i = 0; i < cigar_char_count; i++)
-			{
-				for (j = 0; j < cigar[i]; j++)
+				if (isdigit(first_sam_line_cigar[j]))
 				{
-					if (cigar_chars[i] == 'M')
+					int digit = first_sam_line_cigar[j] - '0';
+					cigar_counter = cigar_counter * 10 + digit;
+				}
+				else
+				{
+					first_cigar_vals[index] = cigar_counter;
+					first_cigar_chars[index] = first_sam_line_cigar[j];
+					first_num_cigar_chars++;
+
+					index++;
+					cigar_counter = 0;
+				}
+			}
+			strcpy(first_sequence, first_sam_fields[9]);
+
+			strcpy(second_sam_line_cigar, second_sam_fields[5]);
+
+			int second_num_cigar_chars = 0;
+			cigar_counter = 0;
+			index = 0;
+			for (j = 0; second_sam_line_cigar[j] != '\0'; j++)
+			{
+				if (isdigit(second_sam_line_cigar[j]))
+				{
+					int digit = second_sam_line_cigar[j] - '0';
+					cigar_counter = cigar_counter * 10 + digit;
+				}
+				else
+				{
+					second_cigar_vals[index] = cigar_counter;
+					second_cigar_chars[index] = second_sam_line_cigar[j];
+					second_num_cigar_chars++;
+
+					index++;
+					cigar_counter = 0;
+				}
+			}
+			strcpy(second_sequence, second_sam_fields[9]);
+
+			int first_index = 0;
+			int first_sequence_offset = 0;
+			int first_reference_offset = 0;
+			for (j = 0; j < first_num_cigar_chars; j++)
+			{
+				for (k = 0; k < first_cigar_vals[j]; k++)
+				{
+					int first_pos_in_msa = reference_index[first_sequence_start_pos + first_reference_offset];
+
+					if (first_cigar_chars[j] == 'M')
 					{
-						int position_in_MSA = reference_index[j + start_ref + position];
-						if (sequence[j + start] == 'A' || sequence[j + start] == 'a')
+						if (first_pos_in_msa != -1)
 						{
-							// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-							//	allele[reference[j+start_ref+position]][0]++;
-							// }
-							if (position_in_MSA != -1 && position_in_MSA < length_of_MSA)
-							{
-								allele[position_in_MSA][0]++;
-							}
+							first_msa_positions[first_index] = first_pos_in_msa;
+							first_bases[first_index] = toupper(first_sequence[first_sequence_offset]);
+							first_index++;
 						}
-						else if (sequence[j + start] == 'G' || sequence[j + start] == 'g')
-						{
-							// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-							//	allele[reference[j+start_ref+position]][1]++;
-							// }
-							if (position_in_MSA != -1 && position_in_MSA < length_of_MSA)
-							{
-								allele[position_in_MSA][1]++;
-							}
-						}
-						else if (sequence[j + start] == 'C' || sequence[j + start] == 'c')
-						{
-							// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-							//	allele[reference[j+start_ref+position]][2]++;
-							// }
-							if (position_in_MSA != -1 && position_in_MSA < length_of_MSA)
-							{
-								allele[position_in_MSA][2]++;
-							}
-						}
-						else if (sequence[j + start] == 'T' || sequence[j + start] == 't')
-						{
-							// if ( reference[j+start_ref+position] < length_of_MSA && reference[j+start_ref+position] != -1){
-							//	allele[reference[j+start_ref+position]][3]++;
-							// }
-							if (position_in_MSA != -1 && position_in_MSA < length_of_MSA)
-							{
-								allele[position_in_MSA][3]++;
-							}
-						}
+						first_sequence_offset++;
+						first_reference_offset++;
 					}
-				}
-				if (cigar_chars[i] == 'M')
-				{
-					start = cigar[i] + start;
-					start_ref = cigar[i] + start_ref;
-				}
-				if (cigar_chars[i] == 'I')
-				{
-					start = cigar[i] + start;
-				}
-				if (cigar_chars[i] == 'D')
-				{
-					start_ref = cigar[i] + start_ref;
-					for (j = 0; j < cigar[i]; j++)
+					else if (first_cigar_chars[j] == 'I' || first_cigar_chars[j] == 'S')
 					{
-						deletions[reference_index[j + start_ref + position]]++;
+						first_sequence_offset++;
+					}
+					else if (first_cigar_chars[j] == 'D')
+					{
+						if (first_pos_in_msa != -1)
+						{
+							deletions[first_pos_in_msa]++;
+						}
+						first_reference_offset++;
 					}
 				}
 			}
-			free(buffer_copy);
+
+			int second_index = 0;
+			int second_sequence_offset = 0;
+			int second_reference_offset = 0;
+			for (j = 0; j < second_num_cigar_chars; j++)
+			{
+				for (k = 0; k < second_cigar_vals[j]; k++)
+				{
+					int second_pos_in_msa = reference_index[second_sequence_start_pos + second_reference_offset];
+
+					if (second_cigar_chars[j] == 'M')
+					{
+						if (second_pos_in_msa != -1)
+						{
+							second_msa_positions[second_index] = second_pos_in_msa;
+							second_bases[second_index] = toupper(second_sequence[second_sequence_offset]);
+							second_index++;
+						}
+						second_sequence_offset++;
+						second_reference_offset++;
+					}
+					else if (second_cigar_chars[j] == 'I' || second_cigar_chars[j] == 'S')
+					{
+						second_sequence_offset++;
+					}
+					else if (second_cigar_chars[j] == 'D')
+					{
+						if (second_pos_in_msa != -1)
+						{
+							deletions[second_pos_in_msa]++;
+						}
+						second_reference_offset++;
+					}
+				}
+			}
+
+			int merged_index = 0;
+			j = 0;
+			k = 0;
+			while (j < first_index && k < second_index)
+			{
+				if (first_msa_positions[j] < second_msa_positions[k])
+				{
+					merged_msa_positions[merged_index] = first_msa_positions[j];
+					merged_bases[merged_index] = first_bases[j];
+					merged_index++;
+					j++;
+				}
+				else if (first_msa_positions[j] > second_msa_positions[k])
+				{
+					merged_msa_positions[merged_index] = second_msa_positions[k];
+					merged_bases[merged_index] = second_bases[k];
+					merged_index++;
+					k++;
+				}
+				else
+				{
+					if (first_bases[j] == second_bases[k])
+					{
+						merged_msa_positions[merged_index] = first_msa_positions[j];
+						merged_bases[merged_index] = first_bases[j];
+						merged_index++;
+					}
+					j++;
+					k++;
+				}
+			}
+			while (j < first_index)
+			{
+				merged_msa_positions[merged_index] = first_msa_positions[j];
+				merged_bases[merged_index] = first_bases[j];
+				merged_index++;
+				j++;
+			}
+			while (k < second_index)
+			{
+				merged_msa_positions[merged_index] = second_msa_positions[k];
+				merged_bases[merged_index] = second_bases[k];
+				merged_index++;
+				k++;
+			}
+
+			for (j = 0; j < merged_index; j++)
+			{
+				if (merged_msa_positions[j] < msa_sequence_length)
+				{
+					switch (merged_bases[j])
+					{
+						case 'A':
+							allele[merged_msa_positions[j]][0]++;
+							break;
+						case 'G':
+							allele[merged_msa_positions[j]][1]++;
+							break;
+						case 'C':
+							allele[merged_msa_positions[j]][2]++;
+							break;
+						case 'T':
+							allele[merged_msa_positions[j]][3]++;
+							break;
+					}
+				}
+			}
 		}
 	}
-	if (print_counts[0] != '\0')
+	free(first_sequence);
+	free(second_sequence);
+	
+	if (output_deletions)
+	{
+		FILE *deletion_sites_file;
+		if ((deletion_sites_file = fopen(deletions_output_filepath, "w")) == (FILE *)NULL)
+		{
+			fprintf(stderr, "Deletion sites output file could not be opened.\n");
+		}
+		fprintf(deletion_sites_file, "Site\tFrequency\n");
+		for (i = 0; i < msa_sequence_length; i++)
+		{
+			double deletion_ratio = (double)(deletions[i]) / sam_results_str.num_sam_lines;
+			if (deletion_ratio > deletion_threshold)
+			{
+				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletion_ratio);
+			}
+		}
+		fclose(deletion_sites_file);
+	}
+	free(deletions);
+
+	if (output_allele_counts)
 	{
 		FILE *allele_counts_file;
-		if ((allele_counts_file = fopen(print_counts, "w")) == (FILE *)NULL)
-			fprintf(stderr, "Allele Counts file could not be opened.\n");
+		if ((allele_counts_file = fopen(allele_counts_output_filepath, "w")) == (FILE *)NULL)
+		{
+			fprintf(stderr, "Allele Counts output file could not be opened.\n");
+		}	
 		fprintf(allele_counts_file, "position\tA\tG\tC\tT\n");
-		for (i = 0; i < length_of_MSA; i++)
+		for (i = 0; i < msa_sequence_length; i++)
 		{
 			fprintf(allele_counts_file, "%d\t%lf\t%lf\t%lf\t%lf\n", i, allele[i][0], allele[i][1], allele[i][2], allele[i][3]);
 		}
 		fclose(allele_counts_file);
 	}
-	if (print_deletions[0] != '\0')
-	{
-		FILE *deletion_sites_file;
-		if ((deletion_sites_file = fopen(print_deletions, "w")) == (FILE *)NULL)
-			fprintf(stderr, "Deletion sites file could not be opened.\n");
-		fprintf(deletion_sites_file, "Site\tFrequency\n");
-		for (i = 0; i < length_of_MSA; i++)
-		{
-			if (deletions[i] / cached_num_sam_lines > deletion_threshold)
-			{
-				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletions[i] / cached_num_sam_lines);
-			}
-		}
-		fclose(deletion_sites_file);
-	}
+
 	// --- Stage 2: convert counts to frequencies, drop low-coverage sites, mark "bad" bases ---
-	int covered = 0;
-	for (i = 0; i < length_of_MSA; i++)
+	int num_covered_sites = 0;
+	for (i = 0; i < msa_sequence_length; i++)
 	{
 		double total = 0;
 		for (j = 0; j < 4; j++)
@@ -912,16 +334,18 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 		}
 		if (total > 0)
 		{
-			covered++;
+			num_covered_sites++;
 		}
 	}
-	int *covered_sites = (int *)malloc(covered * sizeof(int));
-	for (i = 0; i < covered; i++)
+
+	int *covered_sites = (int *)malloc(num_covered_sites * sizeof(int));
+	for (i = 0; i < num_covered_sites; i++)
 	{
 		covered_sites[i] = -1;
 	}
+
 	int k = 0;
-	for (i = 0; i < length_of_MSA; i++)
+	for (i = 0; i < msa_sequence_length; i++)
 	{
 		double total = 0;
 		for (j = 0; j < 4; j++)
@@ -938,243 +362,476 @@ int calculateAlleleFreq(FILE *sam, double **allele, int length_of_MSA, char **MS
 			allele[i][j] = allele[i][j] / total;
 		}
 	}
-	printf("Number of sites not covered: %d\n", length_of_MSA - k);
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		int found = 0;
-		for (j = 0; j < covered; j++)
-		{
-			if (variant_sites[i] == covered_sites[j])
-			{
-				found = 1;
-			}
-		}
-		if (found == 0)
-		{
-			variant_sites[i] = -1;
-		}
-	}
-	free(covered_sites);
-	int temp_num_var_sites = 0;
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		if (variant_sites[i] >= 0 && variant_sites[i] < length_of_MSA - 1)
-		{
-			temp_num_var_sites++;
-		}
-	}
-	int *variant_sites_updated = (int *)malloc(temp_num_var_sites * sizeof(int));
-	k = 0;
-	for (i = 0; i < number_of_variant_sites; i++)
-	{
-		if (variant_sites[i] != -1 && variant_sites[i] < length_of_MSA - 1)
-		{
-			variant_sites_updated[k] = variant_sites[i];
-			k++;
-		}
-	}
-	free(variant_sites);
-	
-	int **bad_bases = (int **)malloc(length_of_MSA * sizeof(int *));
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		bad_bases[i] = (int *)malloc(4 * sizeof(int));
-		for (j = 0; j < 4; j++)
-		{
-			bad_bases[i][j] = 0;
-		}
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		for (j = 0; j < 4; j++)
-		{
-			if (allele[i][j] < freq_threshold)
-			{
-				bad_bases[i][j] = 1;
-			}
-		}
-	}
-	int *bad_bases_count = (int *)malloc(length_of_MSA * sizeof(int));
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		bad_bases_count[i] = 0;
-	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		for (j = 0; j < 4; j++)
-		{
-			bad_bases_count[i] += bad_bases[i][j];
-		}
-	}
-	char **bad_base_char = (char **)malloc(length_of_MSA * sizeof(char *));
-	for (i = 0; i < length_of_MSA; i++)
+	printf("Number of sites not covered: %d\n", msa_sequence_length - k);
+
+	int *bad_bases_count = (int *)calloc(msa_sequence_length, sizeof(int));
+	char **bad_base_char = (char **)malloc(msa_sequence_length * sizeof(char *));
+	for (i = 0; i < msa_sequence_length; i++)
 	{
 		bad_base_char[i] = (char *)malloc(4 * sizeof(char));
-		for (j = 0; j < 4; j++)
-		{
-			bad_base_char[i][j] = '\0';
-		}
-	}
- 
-	for (i = 0; i < length_of_MSA; i++)
-	{
+
 		j = 0;
-		// for(j=0; j<4-bad_bases_count[i]; j++){
 		for (k = 0; k < 4; k++)
 		{
-			if (bad_bases[i][k] == 0)
+			if (allele[i][k] < freq_threshold)
 			{
-				if (k == 0)
+				bad_bases_count[i]++;
+			}
+			else
+			{
+				switch (k)
 				{
-					bad_base_char[i][j] = 'A';
-					j++;
+					case 0: 
+						bad_base_char[i][j] = 'A'; 
+						break;
+					case 1: 
+						bad_base_char[i][j] = 'G'; 
+						break;
+					case 2: 
+						bad_base_char[i][j] = 'C'; 
+						break;
+					case 3: 
+						bad_base_char[i][j] = 'T'; 
+						break;
 				}
-				else if (k == 1)
-				{
-					bad_base_char[i][j] = 'G';
-					j++;
-				}
-				else if (k == 2)
-				{
-					bad_base_char[i][j] = 'C';
-					j++;
-				}
-				else if (k == 3)
-				{
-					bad_base_char[i][j] = 'T';
-					j++;
-				}
-				bad_bases[i][k] = 1;
+				j++;
 			}
 		}
-		//}
 	}
-	for (i = 0; i < length_of_MSA; i++)
-	{
-		free(bad_bases[i]);
-	}
-	free(bad_bases);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Eliminating strains...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
+
 	// --- Stage 3: iteratively eliminate strains incompatible with the "bad" bases above ---
-	int number_remaining = 0;
-	int base;
+	int num_sequences = msa_str->num_sequences;
+	
+	int *incompat_counter = (int *)calloc(num_sequences, sizeof(int));
+
+	int num_sequences_remaining;
 	int count;
-	int var_count = 0;
-	/*int* nums_of_strains = (int*)malloc(number_of_different_strains*sizeof(int));
-	for(i=0; i<number_of_different_strains; i++){
-		nums_of_strains[i]=-1;
-	}
-	int place=0;*/
-	int number_removed = 0;
 	int run_loop = 1;
-	int number_of_iterations = 1;
-	int *incompat_counter = (int *)malloc(number_of_strains * sizeof(int));
-	while (run_loop == 1)
+	int num_loop_iterations = 1;
+	while (run_loop)
 	{
-		printf("iteration %d\n", number_of_iterations);
-		for (i = 0; i < number_of_strains; i++)
+		printf("iteration %d\n", num_loop_iterations);
+		for (i = 0; i < num_sequences; i++)
 		{
 			incompat_counter[i] = 0;
 		}
-		number_remaining = number_of_strains;
-		for (i = 0; i < temp_num_var_sites; i++)
+		num_sequences_remaining = num_sequences;
+		for (i = 0; i < num_covered_sites; i++)
 		{
-			// if ( variant_sites[i] == covered_sites[next] ){
-			for (j = 0; j < number_of_strains; j++)
+			for (j = 0; j < num_sequences; j++)
 			{
-				// if ( names_of_strains[j][0] != '\0'){
-				if (incompat_counter[j] < number_of_iterations)
+				if (incompat_counter[j] < num_loop_iterations)
 				{
-					/*if ( MSA[j][variant_sites_updated[i]] == 'A' ){
-						base=0;
-					}else if ( MSA[j][variant_sites_updated[i]] == 'G' ){
-						base=1;
-					}else if ( MSA[j][variant_sites_updated[i]] == 'C' ){
-						base=2;
-					}else if ( MSA[j][variant_sites_updated[i]] == 'T' ){
-						base=3;
-					}
-					if ( allele[variant_sites_updated[i]][base] < freq_threshold ){
-						//memset(names_of_strains[identical[j]],'\0',maxname);
-						names_of_strains[j][0] = '\0';
-					}*/
 					count = 0;
-					for (k = 0; k < 4 - bad_bases_count[variant_sites_updated[i]]; k++)
+					for (k = 0; k < 4 - bad_bases_count[covered_sites[i]]; k++)
 					{
-						if (MSA[j][variant_sites_updated[i]] != bad_base_char[variant_sites_updated[i]][k])
+						if (msa_str->sequences[j][covered_sites[i]] != bad_base_char[covered_sites[i]][k])
 						{
 							count++;
 						}
 					}
-					if (count == (4 - bad_bases_count[variant_sites_updated[i]]))
+					if (count == (4 - bad_bases_count[covered_sites[i]]))
 					{
-						// names_of_strains[j][0] = '\0';
 						incompat_counter[j]++;
 					}
 				}
 			}
 		}
-		for (i = 0; i < number_of_strains; i++)
+		for (i = 0; i < num_sequences; i++)
 		{
-			if (incompat_counter[i] == number_of_iterations)
+			if (incompat_counter[i] == num_loop_iterations)
 			{
-				number_remaining--;
-				number_removed++;
+				num_sequences_remaining--;
 			}
 		}
-		if (number_remaining >= min_strains_remaining && number_remaining < max_strains_remaining)
+		if (num_sequences_remaining >= min_strains_remaining && num_sequences_remaining < max_strains_remaining)
 		{
-			printf("exiting loop. %d remaining\n", number_remaining);
+			printf("exiting loop. %d remaining\n", num_sequences_remaining);
 			run_loop = 0;
 		}
-		else if (number_remaining >= max_strains_remaining)
+		else if (num_sequences_remaining >= max_strains_remaining)
 		{
-			printf("%d strains remaining. exiting...\n", number_remaining);
+			printf("%d strains remaining. exiting...\n", num_sequences_remaining);
 			exit(1);
 		}
 		else
 		{
-			printf("there are %d remaining... \n", number_remaining);
-			number_of_iterations++;
+			printf("there are %d remaining... \n", num_sequences_remaining);
+			num_loop_iterations++;
 		}
 	}
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	for (i = 0; i < number_of_strains; i++)
+
+	for (i = 0; i < num_sequences; i++)
 	{
-		if (incompat_counter[i] == number_of_iterations)
+		if (incompat_counter[i] == num_loop_iterations)
 		{
-			names_of_strains[i][0] = '\0';
+			msa_str->sequence_names[i][0] = '\0';
 		}
 	}
-	for (i = 0; i < length_of_MSA; i++)
+
+	for (i = 0; i < msa_sequence_length; i++)
 	{
 		free(bad_base_char[i]);
 	}
 	free(bad_base_char);
 	free(bad_bases_count);
-	free(variant_sites_updated);
-	number_remaining = 0;
-	for (i = 0; i < number_of_strains; i++)
+	free(covered_sites);
+
+	num_sequences_remaining = 0;
+	for (i = 0; i < num_sequences; i++)
 	{
-		if (names_of_strains[i][0] != '\0')
+		if (msa_str->sequence_names[i][0] != '\0')
 		{
-			// printf("Remaining strain: %s\n",names_of_strains[i]);
-			number_remaining++;
+			num_sequences_remaining++;
 		}
 	}
-	printf("Number of strains remaining is %d\n", number_remaining);
-	if (sam_results != NULL)
+	printf("Number remaining: %d\n", num_sequences_remaining);
+	free(incompat_counter);
+
+	return num_sequences_remaining;
+}
+
+
+int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str)
+{
+	int i, j, k;
+	int msa_sequence_length = msa_str->sequence_length;
+
+	char copy[FASTA_MAXLINE];
+	char sam_line_cigar[FASTA_MAXLINE];
+	char *sam_fields[11];
+
+	char *sequence = (char *)calloc(MAX_READ_LENGTH, sizeof(char));
+	int cigar_vals[MAX_CIGAR] = {0};
+	char cigar_chars[MAX_CIGAR] = {'\0'};
+
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+	int *deletions = (int *)calloc((msa_sequence_length), sizeof(int));
+
+	int msa_positions[MAX_READ_LENGTH];
+	char bases[MAX_READ_LENGTH];
+
+	SAMResults sam_results_str = reference_data_str->sam_results_str;
+	int *reference_index = reference_data_str->reference_index;
+
+	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read ---
+	for (i = 0; i < sam_results_str.num_sam_lines; i += 2)
 	{
-		if (cached_num_sam_lines > 0 && cached_capacity > cached_num_sam_lines)
+		int skip_reads = 0;
+
+		strcpy(copy, sam_results_str.sam_results[i]);
+
+		char *token = strtok(copy, "\t");
+
+		j = 0;
+		while (token != NULL && j < 11)
 		{
-			cached_sam_results = realloc(cached_sam_results, cached_num_sam_lines * sizeof(char *));
+			sam_fields[j] = token;
+			j++;
+			token = strtok(NULL, "\t");
 		}
-		*sam_results = cached_sam_results;
-		*num_sam_lines = cached_num_sam_lines;
+
+		int sam_line_flags = atoi(sam_fields[1]);
+		int forward_read = parse_sam_flags(sam_line_flags);
+		if (forward_read != 1 && forward_read != 0)
+		{
+			skip_reads = 1;
+		}
+
+		int sequence_start_pos = atoi(sam_fields[3]) - 1;
+
+		if (!skip_reads)
+		{
+			strcpy(sam_line_cigar, sam_fields[5]);
+
+			int num_cigar_chars = 0;
+			int cigar_counter = 0;
+			int index = 0;
+			for (j = 0; sam_line_cigar[j] != '\0'; j++)
+			{
+				if (isdigit(sam_line_cigar[j]))
+				{
+					int digit = sam_line_cigar[j] - '0';
+					cigar_counter = cigar_counter * 10 + digit;
+				}
+				else
+				{
+					cigar_vals[index] = cigar_counter;
+					cigar_chars[index] = sam_line_cigar[j];
+					num_cigar_chars++;
+
+					index++;
+					cigar_counter = 0;
+				}
+			}
+			strcpy(sequence, sam_fields[9]);
+
+			int index = 0;
+			int sequence_offset = 0;
+			int reference_offset = 0;
+			for (j = 0; j < num_cigar_chars; j++)
+			{
+				for (k = 0; k < cigar_vals[j]; k++)
+				{
+					int pos_in_msa = reference_index[sequence_start_pos + reference_offset];
+
+					if (cigar_chars[j] == 'M')
+					{
+						if (pos_in_msa != -1)
+						{
+							msa_positions[index] = pos_in_msa;
+							bases[index] = toupper(sequence[sequence_offset]);
+							index++;
+						}
+						sequence_offset++;
+						reference_offset++;
+					}
+					else if (cigar_chars[j] == 'I' || cigar_chars[j] == 'S')
+					{
+						sequence_offset++;
+					}
+					else if (cigar_chars[j] == 'D')
+					{
+						if (pos_in_msa != -1)
+						{
+							deletions[pos_in_msa]++;
+						}
+						reference_offset++;
+					}
+				}
+			}
+
+			for (j = 0; j < index; j++)
+			{
+				if (msa_positions[j] < msa_sequence_length)
+				{
+					switch (bases[j])
+					{
+						case 'A':
+							allele[msa_positions[j]][0]++;
+							break;
+						case 'G':
+							allele[msa_positions[j]][1]++;
+							break;
+						case 'C':
+							allele[msa_positions[j]][2]++;
+							break;
+						case 'T':
+							allele[msa_positions[j]][3]++;
+							break;
+					}
+				}
+			}
+		}
 	}
-	return number_remaining;
+	free(sequence);
+	
+	if (output_deletions)
+	{
+		FILE *deletion_sites_file;
+		if ((deletion_sites_file = fopen(deletions_output_filepath, "w")) == (FILE *)NULL)
+		{
+			fprintf(stderr, "Deletion sites output file could not be opened.\n");
+		}
+		fprintf(deletion_sites_file, "Site\tFrequency\n");
+		for (i = 0; i < msa_sequence_length; i++)
+		{
+			double deletion_ratio = (double)(deletions[i]) / sam_results_str.num_sam_lines;
+			if (deletion_ratio > deletion_threshold)
+			{
+				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletion_ratio);
+			}
+		}
+		fclose(deletion_sites_file);
+	}
+	free(deletions);
+
+	if (output_allele_counts)
+	{
+		FILE *allele_counts_file;
+		if ((allele_counts_file = fopen(allele_counts_output_filepath, "w")) == (FILE *)NULL)
+		{
+			fprintf(stderr, "Allele Counts output file could not be opened.\n");
+		}	
+		fprintf(allele_counts_file, "position\tA\tG\tC\tT\n");
+		for (i = 0; i < msa_sequence_length; i++)
+		{
+			fprintf(allele_counts_file, "%d\t%lf\t%lf\t%lf\t%lf\n", i, allele[i][0], allele[i][1], allele[i][2], allele[i][3]);
+		}
+		fclose(allele_counts_file);
+	}
+
+	// --- Stage 2: convert counts to frequencies, drop low-coverage sites, mark "bad" bases ---
+	int num_covered_sites = 0;
+	for (i = 0; i < msa_sequence_length; i++)
+	{
+		double total = 0;
+		for (j = 0; j < 4; j++)
+		{
+			total = total + allele[i][j];
+		}
+		if (total > 0)
+		{
+			num_covered_sites++;
+		}
+	}
+
+	int *covered_sites = (int *)malloc(num_covered_sites * sizeof(int));
+	for (i = 0; i < num_covered_sites; i++)
+	{
+		covered_sites[i] = -1;
+	}
+
+	int k = 0;
+	for (i = 0; i < msa_sequence_length; i++)
+	{
+		double total = 0;
+		for (j = 0; j < 4; j++)
+		{
+			total = total + allele[i][j];
+		}
+		if (total >= coverage)
+		{
+			covered_sites[k] = i;
+			k++;
+		}
+		for (j = 0; j < 4; j++)
+		{
+			allele[i][j] = allele[i][j] / total;
+		}
+	}
+	printf("Number of sites not covered: %d\n", msa_sequence_length - k);
+
+	int *bad_bases_count = (int *)calloc(msa_sequence_length, sizeof(int));
+	char **bad_base_char = (char **)malloc(msa_sequence_length * sizeof(char *));
+	for (i = 0; i < msa_sequence_length; i++)
+	{
+		bad_base_char[i] = (char *)malloc(4 * sizeof(char));
+
+		j = 0;
+		for (k = 0; k < 4; k++)
+		{
+			if (allele[i][k] < freq_threshold)
+			{
+				bad_bases_count[i]++;
+			}
+			else
+			{
+				switch (k)
+				{
+					case 0: 
+						bad_base_char[i][j] = 'A'; 
+						break;
+					case 1: 
+						bad_base_char[i][j] = 'G'; 
+						break;
+					case 2: 
+						bad_base_char[i][j] = 'C'; 
+						break;
+					case 3: 
+						bad_base_char[i][j] = 'T'; 
+						break;
+				}
+				j++;
+			}
+		}
+	}
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+
+	// --- Stage 3: iteratively eliminate strains incompatible with the "bad" bases above ---
+	int num_sequences = msa_str->num_sequences;
+	
+	int *incompat_counter = (int *)calloc(num_sequences, sizeof(int));
+
+	int num_sequences_remaining;
+	int count;
+	int run_loop = 1;
+	int num_loop_iterations = 1;
+	while (run_loop)
+	{
+		printf("iteration %d\n", num_loop_iterations);
+		for (i = 0; i < num_sequences; i++)
+		{
+			incompat_counter[i] = 0;
+		}
+		num_sequences_remaining = num_sequences;
+		for (i = 0; i < num_covered_sites; i++)
+		{
+			for (j = 0; j < num_sequences; j++)
+			{
+				if (incompat_counter[j] < num_loop_iterations)
+				{
+					count = 0;
+					for (k = 0; k < 4 - bad_bases_count[covered_sites[i]]; k++)
+					{
+						if (msa_str->sequences[j][covered_sites[i]] != bad_base_char[covered_sites[i]][k])
+						{
+							count++;
+						}
+					}
+					if (count == (4 - bad_bases_count[covered_sites[i]]))
+					{
+						incompat_counter[j]++;
+					}
+				}
+			}
+		}
+		for (i = 0; i < num_sequences; i++)
+		{
+			if (incompat_counter[i] == num_loop_iterations)
+			{
+				num_sequences_remaining--;
+			}
+		}
+		if (num_sequences_remaining >= min_strains_remaining && num_sequences_remaining < max_strains_remaining)
+		{
+			printf("exiting loop. %d remaining\n", num_sequences_remaining);
+			run_loop = 0;
+		}
+		else if (num_sequences_remaining >= max_strains_remaining)
+		{
+			printf("%d strains remaining. exiting...\n", num_sequences_remaining);
+			exit(1);
+		}
+		else
+		{
+			printf("there are %d remaining... \n", num_sequences_remaining);
+			num_loop_iterations++;
+		}
+	}
+	clock_gettime(CLOCK_MONOTONIC, &tend);
+	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+	for (i = 0; i < num_sequences; i++)
+	{
+		if (incompat_counter[i] == num_loop_iterations)
+		{
+			msa_str->sequence_names[i][0] = '\0';
+		}
+	}
+
+	for (i = 0; i < msa_sequence_length; i++)
+	{
+		free(bad_base_char[i]);
+	}
+	free(bad_base_char);
+	free(bad_bases_count);
+	free(covered_sites);
+
+	num_sequences_remaining = 0;
+	for (i = 0; i < num_sequences; i++)
+	{
+		if (msa_str->sequence_names[i][0] != '\0')
+		{
+			num_sequences_remaining++;
+		}
+	}
+	printf("Number remaining: %d\n", num_sequences_remaining);
+	free(incompat_counter);
+
+	return num_sequences_remaining;
 }
