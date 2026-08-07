@@ -19,4 +19,13 @@ char *read_fasta_header_name(char *fasta_filepath);
  */
 char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label);
 
+/**
+ * @brief
+ * 
+ * @param filepath 
+ * @param output_filepath 
+ */
+void get_filepath_in_working_dir(char *filepath, char *working_dir, char *output_filepath);
+
+
 #endif // FILE_UTILS_H

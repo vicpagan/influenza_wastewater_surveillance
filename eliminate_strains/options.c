@@ -8,7 +8,7 @@
 static struct option long_options[] =
 {
 	{"help", no_argument, 0, 'h'},
-	{"MSA-filepath", required_argument, 0, 'i'},
+	{"msa-filepath", required_argument, 0, 'i'},
 	{"samfile", required_argument, 0, 's'},
 	{"freq", required_argument, 0, 'f'},
 	{"outfile", required_argument, 0, 'o'},
@@ -27,6 +27,7 @@ static struct option long_options[] =
 	{"MSA-reference-dir", required_argument, 0, 'g'},
 	{"no-read-sam", no_argument, 0, 'n'},
 	{"print-deletions", required_argument, 0, 'r'},
+	{"working-output-directory", required_argument, 0, 'W'},
 	{"clean-my-reads", no_argument, 0, 'd'},
 	{"bowtie2-alignment_dir", required_argument, 0, 'B'},
 	{"num-references", required_argument, 0, 'N'},
@@ -45,6 +46,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-s, --sam-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
 	-o, --output-filepath [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
+	-W, --working-dir [REQUIRED,DIR]		Directory to output working files [default: current directory (.)]\n\
 	-g, --MSA-reference-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-P, --paired				Using paired-reads\n\
@@ -97,7 +99,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:", long_options, &option_index);
+		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -138,6 +140,11 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid reference directory\n");
 			break;
+		case 'W':
+			success = sscanf(optarg, "%s", opt->working_dir);
+			if (!success)
+				fprintf(stderr, "Invalid working directory\n");
+			break;	
 		case 'n':
 			opt->no_read_bam = 1;
 			break;

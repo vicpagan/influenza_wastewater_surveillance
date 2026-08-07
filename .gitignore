@@ -65,6 +65,11 @@ simulation/
 variants/
 eliminate_strains/*.sam*
 eliminate_strains/test.txt
+working/
+*.bt2
+*.fasta
+*.fastq
+*test.txt
 
 # notes
 NOTES.md

@@ -106,3 +106,29 @@ char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label
  
 	return paths;
 }
+
+/**
+ * @brief
+ * 
+ * @param filepath 
+ * @param working_dir 
+ * @param output_filepath 
+ */
+void get_filepath_in_working_dir(char *filepath, char *working_dir, char *output_filepath)
+{
+	char path_copy[1100];
+	strcpy(path_copy, filepath);
+
+	char *last_slash = strrchr(path_copy, '/');
+	char *basename;
+	if (last_slash == NULL)
+	{
+		basename = path_copy;
+	}
+	else
+	{
+		basename = last_slash + 1;
+	}
+
+	sprintf(output_filepath, "%s/%s", working_dir, basename);
+}

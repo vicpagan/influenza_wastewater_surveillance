@@ -64,6 +64,7 @@ int main(int argc, char **argv)
 	opt.trim_length = 15;
 	opt.fastq_trimmer_threshold = 35;
 	opt.num_threads = 1;
+	strcpy(opt.working_dir, ".");
 	memset(opt.print_counts_filepath, '\0', 1000);
 	memset(opt.print_deletions_filepath, '\0', 1000);
 	parse_options(argc, argv, &opt);
@@ -92,16 +93,19 @@ int main(int argc, char **argv)
 	int ref_idx;
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
-		char sam_path[1000];
-		sprintf(sam_path, "%s.%d", opt.sam_filepath, ref_idx);
+		char sam_filename[1000];
+		sprintf(sam_filename, "%s.%d", opt.sam_filepath, ref_idx);
 
-		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.paired, opt.fasta_format);
+		char sam_path[1100];
+		get_filepath_in_working_dir(sam_filename, opt.working_dir, sam_path);
+
+		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
 		int invoke_cleaning = calculate_error_rates(sam_path);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
 			// clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
-		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.paired, opt.fasta_format);
+		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
 
 		printf("Reading in SAM results for reference %d...\n", ref_idx);
 		reference_data_strs[ref_idx].sam_results_str = read_in_sam_results(sam_path);

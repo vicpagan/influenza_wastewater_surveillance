@@ -34,6 +34,7 @@ typedef struct Options
 	char output_filepath[1000];
 	char print_counts_filepath[1000];
 	char print_deletions_filepath[1000];
+	char working_dir[1000];
 
 	// algorithm parameters
 	double freq;
