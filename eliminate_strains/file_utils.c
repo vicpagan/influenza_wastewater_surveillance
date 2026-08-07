@@ -114,7 +114,7 @@ char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label
  * @param working_dir 
  * @param output_filepath 
  */
-void get_filepath_in_working_dir(char *filepath, char *working_dir, char *output_filepath)
+char *get_filepath_in_working_dir(char *filepath, char *working_dir)
 {
 	char path_copy[1100];
 	strcpy(path_copy, filepath);
@@ -130,5 +130,8 @@ void get_filepath_in_working_dir(char *filepath, char *working_dir, char *output
 		basename = last_slash + 1;
 	}
 
-	sprintf(output_filepath, "%s/%s", working_dir, basename);
+	char *out_path = (char *)malloc((strlen(working_dir) + strlen(basename) + 2) * sizeof(char));
+	sprintf(out_path, "%s/%s", working_dir, basename);
+
+	return out_path;
 }

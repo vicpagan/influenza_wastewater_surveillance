@@ -83,7 +83,7 @@ int main(int argc, char **argv)
 	if (opt.clean_reads == 1)
 	{
 		printf("You've selected -d to clean your FASTA/FASTQ reads. If this is not correct, please quit the program and remove the -d option. Cleaning reads...\n");
-		clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
+		clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 	}
 
 	ReferenceData *reference_data_strs = (ReferenceData *)malloc(opt.num_references * sizeof(ReferenceData));
@@ -96,14 +96,14 @@ int main(int argc, char **argv)
 		char sam_filename[1000];
 		sprintf(sam_filename, "%s.%d", opt.sam_filepath, ref_idx);
 
-		char sam_path[1100];
-		get_filepath_in_working_dir(sam_filename, opt.working_dir, sam_path);
+		char *sam_path = get_filepath_in_working_dir(sam_filename, opt.working_dir);
 
 		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
 		int invoke_cleaning = calculate_error_rates(sam_path);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
-			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
+			printf("Error rates of reads are too high! Cleaning reads...\n");
+			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
 		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
 

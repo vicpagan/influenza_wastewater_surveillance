@@ -147,8 +147,7 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
 {
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
-	char index_prefix[1100];
-	get_filepath_in_working_dir(bowtie2_reference_path, working_dir, index_prefix);
+	char *index_prefix = get_filepath_in_working_dir(bowtie2_reference_path, working_dir);
 
 	char index_check_path[1150];
 	sprintf(index_check_path, "%s.1.bt2", index_prefix);
@@ -181,6 +180,7 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
 	}
 	system(buffer);
 	free(buffer);
+	free(index_prefix);
 }
 
 /**
@@ -199,8 +199,7 @@ void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end
 {
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
-	char index_prefix[1100];
-	get_filepath_in_working_dir(bowtie2_reference_path, working_dir, index_prefix);
+	char *index_prefix = get_filepath_in_working_dir(bowtie2_reference_path, working_dir);
 
 	char index_check_path[1150];
 	sprintf(index_check_path, "%s.1.bt2", index_prefix);
@@ -233,4 +232,5 @@ void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end
 	}
 	system(buffer);
 	free(buffer);
+	free(index_prefix);
 }

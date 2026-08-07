@@ -25,7 +25,7 @@ char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label
  * @param filepath 
  * @param output_filepath 
  */
-void get_filepath_in_working_dir(char *filepath, char *working_dir, char *output_filepath);
+char *get_filepath_in_working_dir(char *filepath, char *working_dir);
 
 
 #endif // FILE_UTILS_H

@@ -3,16 +3,17 @@
 #include <string.h>
 
 #include "clean_reads.h"
+#include "file_utils.h"
 #include "global.h"
 
 /**
  * @brief 
  * 
- * @param filename 
+ * @param prefix 
  * @param sequence_length_threshold 
  * @param trim_length 
  */
-void trim_ends_and_filter_fastq(const char *filename, int sequence_length_threshold, int trim_length)
+void trim_ends_and_filter_fastq(const char *prefix, int sequence_length_threshold, int trim_length)
 {
 	char input_filepath[1000];
 	char output_filepath[1000];
@@ -20,8 +21,8 @@ void trim_ends_and_filter_fastq(const char *filename, int sequence_length_thresh
 	FILE *input_file;
 	FILE *output_file;
 	
-	strcpy(input_filepath, filename);
-	strcpy(output_filepath, filename);
+	strcpy(input_filepath, prefix);
+	strcpy(output_filepath, prefix);
 	strcat(input_filepath, "_trimmed1.fastq");
 	strcat(output_filepath, "_trimmed2.fastq");
 	
@@ -75,15 +76,14 @@ void trim_ends_and_filter_fastq(const char *filename, int sequence_length_thresh
 	free(quality);
 }
 
-// TODO: Add options for magic numbers (95, 15, etc.)
 /**
  * @brief 
  * 
- * @param filename 
+ * @param prefix 
  * @param sequence_length_threshold 
  * @param trim_length 
  */
-void trim_ends_and_filter_fasta(const char *filename, int sequence_length_threshold, int trim_length)
+void trim_ends_and_filter_fasta(const char *prefix, int sequence_length_threshold, int trim_length)
 {
 	char input_filepath[1000];
 	char output_filepath[1000];
@@ -91,8 +91,8 @@ void trim_ends_and_filter_fasta(const char *filename, int sequence_length_thresh
 	FILE *input_file;
 	FILE *output_file;
 	
-	strcpy(input_filepath, filename);
-	strcpy(output_filepath, filename);
+	strcpy(input_filepath, prefix);
+	strcpy(output_filepath, prefix);
 	strcat(input_filepath, "_trimmed1.fasta");
 	strcat(output_filepath, "_trimmed2.fasta");
 	
@@ -134,7 +134,7 @@ void trim_ends_and_filter_fasta(const char *filename, int sequence_length_thresh
 	free(sequence);
 }
 
-char *get_fasta_or_fastq_prefix(const char *filepath)
+char *get_fastx_prefix(const char *filepath)
 {
     const char *file_ext = strrchr(filepath, '.');
 
@@ -166,20 +166,34 @@ char *get_fasta_or_fastq_prefix(const char *filepath)
  * @param using_fasta 
  * @param fastq_trimmer_threshold 
  */
-void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, int using_paired_end_reads, int using_fasta_format, int sequence_length_threshold, int trim_length, int fastq_trimmer_threshold)
+/**
+ * @brief 
+ * 
+ * @param single_end_filepath 
+ * @param forward_end_filepath 
+ * @param reverse_end_filepath 
+ * @param using_paired 
+ * @param using_fasta 
+ * @param sequence_length_threshold 
+ * @param trim_length 
+ * @param fastq_trimmer_threshold 
+ * @param working_dir 
+ */
+void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int sequence_length_threshold, int trim_length, int fastq_trimmer_threshold)
 {
-	char *buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	memset(buffer, '\0', FASTA_MAXLINE);
+	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
 	if (using_paired_end_reads)
 	{
-		char *forward_prefix = get_fasta_or_fastq_prefix(forward_end_filepath);
-		if (forward_prefix == NULL)
+		char *forward_prefix_orig = get_fastx_prefix(forward_end_filepath);
+		if (forward_prefix_orig == NULL)
 		{
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		
+		char *forward_prefix = get_filepath_in_working_dir(forward_prefix_orig, working_dir);
+		free(forward_prefix_orig);
+
 		if (using_fasta_format)
 		{
 			trim_ends_and_filter_fasta(forward_prefix, sequence_length_threshold, trim_length);
@@ -200,18 +214,22 @@ void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *re
 		{
 			strcpy(forward_suffix, "_trimmed2.fastq");
 		}
-		strcat(forward_prefix, forward_suffix);
-		strcpy(forward_end_filepath, forward_prefix);
 
+		char *forward_final = (char *)malloc(strlen(forward_prefix) + strlen(forward_suffix) + 1);
+		sprintf(forward_final, "%s%s", forward_prefix, forward_suffix);
+		strcpy(forward_end_filepath, forward_final);
+		free(forward_final);
 		free(forward_prefix);
 
-		char *reverse_prefix = get_fasta_or_fastq_prefix(reverse_end_filepath);
-		if (reverse_prefix == NULL)
+		char *reverse_prefix_orig = get_fastx_prefix(reverse_end_filepath);
+		if (reverse_prefix_orig == NULL)
 		{
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		
+		char *reverse_prefix = get_filepath_in_working_dir(reverse_prefix_orig, working_dir);
+		free(reverse_prefix_orig);
+
 		if (using_fasta_format)
 		{
 			trim_ends_and_filter_fasta(reverse_prefix, sequence_length_threshold, trim_length);
@@ -232,20 +250,24 @@ void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *re
 		{
 			strcpy(reverse_suffix, "_trimmed2.fastq");
 		}
-		strcat(reverse_prefix, reverse_suffix);
-		strcpy(reverse_end_filepath, reverse_prefix);
 
+		char *reverse_final = (char *)malloc(strlen(reverse_prefix) + strlen(reverse_suffix) + 1);
+		sprintf(reverse_final, "%s%s", reverse_prefix, reverse_suffix);
+		strcpy(reverse_end_filepath, reverse_final);
+		free(reverse_final);
 		free(reverse_prefix);
 	}
 	else
 	{
-		char *prefix = get_fasta_or_fastq_prefix(single_end_filepath);
-		if (prefix == NULL)
+		char *prefix_orig = get_fastx_prefix(single_end_filepath);
+		if (prefix_orig == NULL)
 		{
 			printf("Your reads don't end with .fastq, .fasta, .fa, or .fq. Please decompress your files if they are gzipped.\n");
 			exit(1);
 		}
-		
+		char *prefix = get_filepath_in_working_dir(prefix_orig, working_dir);
+		free(prefix_orig);
+
 		if (using_fasta_format)
 		{
 			trim_ends_and_filter_fasta(prefix, sequence_length_threshold, trim_length);
@@ -266,9 +288,11 @@ void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *re
 		{
 			strcpy(suffix, "_trimmed2.fastq");
 		}
-		strcat(prefix, suffix);
-		strcpy(single_end_filepath, prefix);
 
+		char *final_path = (char *)malloc(strlen(prefix) + strlen(suffix) + 1);
+		sprintf(final_path, "%s%s", prefix, suffix);
+		strcpy(single_end_filepath, final_path);
+		free(final_path);
 		free(prefix);
 	}
 	free(buffer);
