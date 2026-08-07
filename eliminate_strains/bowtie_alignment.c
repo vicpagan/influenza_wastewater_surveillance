@@ -11,9 +11,11 @@
  * @brief 
  * 
  * @param sam_filepath 
+ * @param end_region_length 
+ * @param end_region_error_mult 
  * @return int 
  */
-int calculate_error_rates(char *sam_filepath)
+int calculate_error_rates(char *sam_filepath, int end_region_length, double end_region_error_mult)
 {
 	FILE *sam_file = fopen(sam_filepath, "r");
 	if (sam_file == NULL)
@@ -90,11 +92,11 @@ int calculate_error_rates(char *sam_filepath)
 					{
 						position++;
 					}
-					if (cigar_chars[i] == 'X' && position < 10)
+					if (cigar_chars[i] == 'X' && position < end_region_length)
 					{
 						mismatches_ends++;
 					}
-					else if (cigar_chars[i] == 'X' && position > sequence_length - 11)
+					else if (cigar_chars[i] == 'X' && position > sequence_length - end_region_length - 1)
 					{
 						mismatches_ends++;
 					}
@@ -117,15 +119,15 @@ int calculate_error_rates(char *sam_filepath)
 
 	double average_size = (double)total_length / total_aligned_reads;
 	double error_rate_ends = (double)mismatches_ends / total_aligned_reads;
-	error_rate_ends = error_rate_ends / 20;
+	error_rate_ends = error_rate_ends / (2 * end_region_length);
 	double error_rate_middle = (double)mismatches_middle / total_aligned_reads;
-	error_rate_middle = error_rate_middle / (average_size - 20);
+	error_rate_middle = error_rate_middle / (average_size - (2 * end_region_length));
 
 	printf("Error rate ends: %lf\n", error_rate_ends);
 	printf("Error rate middle: %lf\n", error_rate_middle);
-	if (error_rate_ends > 3 * error_rate_middle)
+	if (error_rate_ends > end_region_error_mult * error_rate_middle)
 	{
-		printf("The error rate in your 5' and 3' ends of your reads is 3x larger than the error rate in the middle of your reads. Your reads need cleaning... quality filtering and trimming ends\n");
+		printf("The error rate in your 5' and 3' ends of your reads is %.1fx larger than the error rate in the middle of your reads. Your reads need cleaning... quality filtering and trimming ends\n", end_region_error_mult);
 		invoke_cleaning = 1;
 	}
 	return invoke_cleaning;

@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 	Options opt;
 	opt.remove_identical_sequences = 0;
 	opt.paired = 0;
-	opt.error = 0.005;
+	opt.em_error = 0.005;
 	opt.coverage = 50;
 	opt.clean_reads = 0;
 	opt.fasta_format = 0;
@@ -63,6 +63,8 @@ int main(int argc, char **argv)
 	opt.sequence_length_threshold = 95;
 	opt.trim_length = 15;
 	opt.fastq_trimmer_threshold = 35;
+	opt.end_region_length = 10;
+	opt.end_region_error_mult = 3.0;
 	opt.num_threads = 1;
 	strcpy(opt.working_dir, ".");
 	memset(opt.print_counts_filepath, '\0', 1000);
@@ -99,9 +101,11 @@ int main(int argc, char **argv)
 		char *sam_path = get_filepath_in_working_dir(sam_filename, opt.working_dir);
 
 		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
-		int invoke_cleaning = calculate_error_rates(sam_path);
+		int invoke_cleaning = calculate_error_rates(sam_path, opt.end_region_length, opt.end_region_error_mult);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
+			// FIXME: As of now, this changes where the opt.xxx_filepath points to once clean_reads() is called. 
+			// Since we now have multiple reference strains, we should determine how to handle this (either all are cleaned, or only the ones that need cleaning are cleaned)
 			printf("Error rates of reads are too high! Cleaning reads...\n");
 			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
@@ -198,11 +202,11 @@ int main(int argc, char **argv)
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 	if (opt.llr == 1)
 	{
-		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -l -r %s -b %s", opt.output_filepath, opt.freq, opt.error, opt.msa_filepath, opt.print_counts_filepath);
+		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -l -r %s -b %s", opt.output_filepath, opt.freq, opt.em_error, opt.msa_filepath, opt.print_counts_filepath);
 	}
 	else
 	{
-		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -r %s -b %s", opt.output_filepath, opt.freq, opt.error, opt.msa_filepath, opt.print_counts_filepath);
+		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -r %s -b %s", opt.output_filepath, opt.freq, opt.em_error, opt.msa_filepath, opt.print_counts_filepath);
 	}
 	system(buffer);
 	free(buffer);

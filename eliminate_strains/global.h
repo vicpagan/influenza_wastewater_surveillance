@@ -38,7 +38,7 @@ typedef struct Options
 
 	// algorithm parameters
 	double freq;
-	double error;
+	double em_error;
 	int coverage;
 	double deletion_threshold;
 	int min_strains;
@@ -47,6 +47,8 @@ typedef struct Options
 	int num_references;
 
 	// clean_reads parameters
+	int end_region_length;
+	double end_region_error_mult;
 	int sequence_length_threshold;
 	int trim_length;
 	int fastq_trimmer_threshold;

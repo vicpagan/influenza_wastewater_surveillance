@@ -5,9 +5,11 @@
  * @brief 
  * 
  * @param sam_filepath 
+ * @param end_region_length 
+ * @param end_region_error_mult 
  * @return int 
  */
-int calculate_error_rates(char *sam_filepath);
+int calculate_error_rates(char *sam_filepath, int end_region_length, double end_region_error_mult);
 
 /**
  * @brief 
