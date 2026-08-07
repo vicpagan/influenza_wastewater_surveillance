@@ -114,6 +114,7 @@ int main(int argc, char **argv)
 
 		printf("Reading in SAM results for reference %d...\n", ref_idx);
 		reference_data_strs[ref_idx].sam_results_str = read_in_sam_results(sam_path);
+		free(sam_path);
 	}
 
 	printf("Reading in MSA...\n");

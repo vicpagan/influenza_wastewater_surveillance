@@ -511,6 +511,7 @@ void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thr
 	free(bad_bases_count);
 	free(covered_sites);
 	free(incompat_counter);
+	free(sequences_to_remove);
 }
 
 
