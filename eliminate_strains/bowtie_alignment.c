@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "bowtie_alignment.h"
 #include "file_utils.h"
@@ -149,8 +150,17 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
 	char index_prefix[1100];
 	get_filepath_in_working_dir(bowtie2_reference_path, working_dir, index_prefix);
 
-	sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
-	system(buffer);
+	char index_check_path[1150];
+	sprintf(index_check_path, "%s.1.bt2", index_prefix);
+	if (access(index_check_path, F_OK) == 0)
+	{
+		printf("Bowtie2 index '%s' already exists. Not rebuilding.\n", index_prefix);
+	}
+	else
+	{
+		sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
+		system(buffer);
+	}
 
 	if (using_paired_end_reads && using_fasta_format)
 	{
@@ -192,8 +202,17 @@ void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end
 	char index_prefix[1100];
 	get_filepath_in_working_dir(bowtie2_reference_path, working_dir, index_prefix);
 
-	sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
-	system(buffer);
+	char index_check_path[1150];
+	sprintf(index_check_path, "%s.1.bt2", index_prefix);
+	if (access(index_check_path, F_OK) == 0)
+	{
+		printf("Bowtie2 index '%s' already exists. Not rebuilding.\n", index_prefix);
+	}
+	else
+	{
+		sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
+		system(buffer);
+	}
 
 	if (using_paired_end_reads && using_fasta_format)
 	{
