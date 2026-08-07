@@ -1,32 +1,16 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
+
+#include "msa.h"
 #include "calculate_allele_freq.h"
 
-void read_in_covered_bases()
-{
+// TODO: Make it so that we calculate allele frequency based on whichever reference strain the read aligns with the best
 
-}
-
-/**
- * @brief 
- * 
- * @param allele 
- * @param msa_str 
- * @param freq_threshold 
- * @param tstart 
- * @param tend 
- * @param coverage 
- * @param min_strains_remaining 
- * @param max_strains_remaining 
- * @param output_allele_counts 
- * @param allele_counts_output_filepath 
- * @param output_deletions 
- * @param deletions_output_filepath 
- * @param deletion_threshold 
- * @param reference_data_str 
- * @return int 
- */
-int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str)
+void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_strs, int num_references)
 {
-	int i, j, k;
+	int i, j, k, sam_line_idx, msa_seq_idx;
 	int msa_sequence_length = msa_str->sequence_length;
 
 	char first_copy[FASTA_MAXLINE];
@@ -44,8 +28,6 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 	int second_cigar_vals[MAX_CIGAR] = {0};
 	char second_cigar_chars[MAX_CIGAR] = {'\0'};
 
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-
 	int *deletions = (int *)calloc((msa_sequence_length), sizeof(int));
 
 	int first_msa_positions[MAX_READ_LENGTH];
@@ -55,49 +37,88 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 	int merged_msa_positions[2 * MAX_READ_LENGTH];
 	char merged_bases[2 * MAX_READ_LENGTH];
 
-	SAMResults sam_results_str = reference_data_str->sam_results_str;
-	int *reference_index = reference_data_str->reference_index;
+	SAMResults sam_results_strs[num_references];
+	int *reference_indexes[num_references];
+	for (i = 0; i < num_references; i++)
+	{
+		sam_results_strs[i] = reference_data_strs[i].sam_results_str;
+		reference_indexes[i] = reference_data_strs[i].reference_index;
+	}
+	int num_sam_lines = sam_results_strs[0].num_sam_lines;
 
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
 	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read pair ---
-	for (i = 0; i < sam_results_str.num_sam_lines; i += 2)
+	for (sam_line_idx = 0; sam_line_idx < num_sam_lines; sam_line_idx += 2)
 	{
 		int skip_reads = 0;
 
-		strcpy(first_copy, sam_results_str.sam_results[i]);
-		strcpy(second_copy, sam_results_str.sam_results[i + 1]);
-
-		char *first_token = strtok(first_copy, "\t");
-		char *second_token = strtok(second_copy, "\t");
-
-		j = 0;
-		while (first_token != NULL && j < 11)
+		int lowest_total_nm = INT32_MAX;
+		int best_sam_index = -1;
+		for (j = 0; j < num_references; j++)
 		{
-			first_sam_fields[j] = first_token;
-			j++;
-			first_token = strtok(NULL, "\t");
+			strcpy(first_copy, sam_results_strs[j].sam_results[sam_line_idx]);
+			strcpy(second_copy, sam_results_strs[j].sam_results[sam_line_idx + 1]);
+
+			char *first_token = strtok(first_copy, "\t");
+			char *second_token = strtok(second_copy, "\t");
+
+			int first_nm = -1;
+			int second_nm = -1;
+			int total_nm = -1;
+
+			while (first_token != NULL && first_nm == -1)
+			{
+				if (strncmp(first_token, "NM:i:", 5) == 0)
+				{
+					first_nm = atoi(first_token + 5);
+				}
+				first_token = strtok(NULL, "\t");
+			}
+
+			while (second_token != NULL && second_nm == -1)
+			{
+				if (strncmp(second_token, "NM:i:", 5) == 0)
+				{
+					second_nm = atoi(second_token + 5);
+				}
+				second_token = strtok(NULL, "\t");
+			}
+
+			total_nm = first_nm + second_nm;
+			if (total_nm < lowest_total_nm && first_nm != -1 && second_nm != -1)
+			{
+				lowest_total_nm = total_nm;
+				best_sam_index = j;
+			}
 		}
 
-		j = 0;
-		while (second_token != NULL && j < 11)
+		if (best_sam_index != -1)
 		{
-			second_sam_fields[j] = second_token;
-			j++;
-			second_token = strtok(NULL, "\t");
-		}
+			strcpy(first_copy, sam_results_strs[best_sam_index].sam_results[sam_line_idx]);
+			strcpy(second_copy, sam_results_strs[best_sam_index].sam_results[sam_line_idx + 1]);
 
-		int first_sam_line_flags = atoi(first_sam_fields[1]);
-		int second_sam_line_flags = atoi(second_sam_fields[1]);
-		int first_line_forward_read = parse_sam_flags(first_sam_line_flags);
-		if (first_line_forward_read != 1 && first_line_forward_read != 0)
-		{
-			skip_reads = 1;
-		}
+			char *first_token = strtok(first_copy, "\t");
+			char *second_token = strtok(second_copy, "\t");
 
-		int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
-		int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
+			j = 0;
+			while (first_token != NULL && j < 11)
+			{
+				first_sam_fields[j] = first_token;
+				j++;
+				first_token = strtok(NULL, "\t");
+			}
 
-		if (!skip_reads)
-		{
+			j = 0;
+			while (second_token != NULL && j < 11)
+			{
+				second_sam_fields[j] = second_token;
+				j++;
+				second_token = strtok(NULL, "\t");
+			}
+
+			int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
+			int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
+
 			strcpy(first_sam_line_cigar, first_sam_fields[5]);
 
 			int first_num_cigar_chars = 0;
@@ -153,7 +174,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 			{
 				for (k = 0; k < first_cigar_vals[j]; k++)
 				{
-					int first_pos_in_msa = reference_index[first_sequence_start_pos + first_reference_offset];
+					int first_pos_in_msa = reference_indexes[best_sam_index][first_sequence_start_pos + first_reference_offset];
 
 					if (first_cigar_chars[j] == 'M')
 					{
@@ -188,7 +209,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 			{
 				for (k = 0; k < second_cigar_vals[j]; k++)
 				{
-					int second_pos_in_msa = reference_index[second_sequence_start_pos + second_reference_offset];
+					int second_pos_in_msa = reference_indexes[best_sam_index][second_sequence_start_pos + second_reference_offset];
 
 					if (second_cigar_chars[j] == 'M')
 					{
@@ -298,7 +319,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 		fprintf(deletion_sites_file, "Site\tFrequency\n");
 		for (i = 0; i < msa_sequence_length; i++)
 		{
-			double deletion_ratio = (double)(deletions[i]) / sam_results_str.num_sam_lines;
+			double deletion_ratio = (double)(deletions[i]) / num_sam_lines;
 			if (deletion_ratio > deletion_threshold)
 			{
 				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletion_ratio);
@@ -344,7 +365,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 		covered_sites[i] = -1;
 	}
 
-	int k = 0;
+	k = 0;
 	for (i = 0; i < msa_sequence_length; i++)
 	{
 		double total = 0;
@@ -404,6 +425,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 	int num_sequences = msa_str->num_sequences;
 	
 	int *incompat_counter = (int *)calloc(num_sequences, sizeof(int));
+	int *sequences_to_remove = (int *)calloc(num_sequences, sizeof(int));
 
 	int num_sequences_remaining;
 	int count;
@@ -464,12 +486,20 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
+	num_sequences_remaining = num_sequences;
 	for (i = 0; i < num_sequences; i++)
 	{
 		if (incompat_counter[i] == num_loop_iterations)
 		{
-			msa_str->sequence_names[i][0] = '\0';
+			sequences_to_remove[i] = 1;
+			num_sequences_remaining--;
 		}
+	}
+	printf("Number remaining: %d\n", num_sequences_remaining);
+
+	if (num_sequences != num_sequences_remaining)
+	{
+		prune_msa_sequences(msa_str, sequences_to_remove);
 	}
 
 	for (i = 0; i < msa_sequence_length; i++)
@@ -479,25 +509,13 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
 	free(bad_base_char);
 	free(bad_bases_count);
 	free(covered_sites);
-
-	num_sequences_remaining = 0;
-	for (i = 0; i < num_sequences; i++)
-	{
-		if (msa_str->sequence_names[i][0] != '\0')
-		{
-			num_sequences_remaining++;
-		}
-	}
-	printf("Number remaining: %d\n", num_sequences_remaining);
 	free(incompat_counter);
-
-	return num_sequences_remaining;
 }
 
 
-int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str)
+void calculate_allele_freq_single(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_strs, int num_references)
 {
-	int i, j, k;
+	int i, j, k, sam_line_idx, msa_seq_idx;
 	int msa_sequence_length = msa_str->sequence_length;
 
 	char copy[FASTA_MAXLINE];
@@ -515,42 +533,67 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 	int msa_positions[MAX_READ_LENGTH];
 	char bases[MAX_READ_LENGTH];
 
-	SAMResults sam_results_str = reference_data_str->sam_results_str;
-	int *reference_index = reference_data_str->reference_index;
+	SAMResults sam_results_strs[num_references];
+	int *reference_indexes[num_references];
+	for (int i = 0; i < num_references; i++)
+	{
+		sam_results_strs[i] = reference_data_strs[i].sam_results_str;
+		reference_indexes[i] = reference_data_strs[i].reference_index;
+	}
+	int num_sam_lines = sam_results_strs[0].num_sam_lines;
 
 	// --- Stage 1: tally per-site A/C/G/T counts (and deletions) from every read ---
-	for (i = 0; i < sam_results_str.num_sam_lines; i += 2)
+	for (sam_line_idx = 0; sam_line_idx < num_sam_lines; sam_line_idx++)
 	{
 		int skip_reads = 0;
 
-		strcpy(copy, sam_results_str.sam_results[i]);
-
-		char *token = strtok(copy, "\t");
-
-		j = 0;
-		while (token != NULL && j < 11)
+		int lowest_nm = INT32_MAX;
+		int best_sam_index = -1;
+		for (j = 0; j < num_references; j++)
 		{
-			sam_fields[j] = token;
-			j++;
-			token = strtok(NULL, "\t");
+			strcpy(copy, sam_results_strs[j].sam_results[sam_line_idx]);
+
+			char *token = strtok(copy, "\t");
+
+			int nm = -1;
+
+			while (token != NULL && nm == -1)
+			{
+				if (strncmp(token, "NM:i:", 5) == 0)
+				{
+					nm = atoi(token + 5);
+				}
+				token = strtok(NULL, "\t");
+			}
+
+			if (nm < lowest_nm && nm != -1)
+			{
+				lowest_nm = nm;
+				best_sam_index = j;
+			}
 		}
 
-		int sam_line_flags = atoi(sam_fields[1]);
-		int forward_read = parse_sam_flags(sam_line_flags);
-		if (forward_read != 1 && forward_read != 0)
+		if (best_sam_index != -1)
 		{
-			skip_reads = 1;
-		}
+			strcpy(copy, sam_results_strs[best_sam_index].sam_results[sam_line_idx]);
 
-		int sequence_start_pos = atoi(sam_fields[3]) - 1;
+			char *token = strtok(copy, "\t");
 
-		if (!skip_reads)
-		{
+			j = 0;
+			while (token != NULL && j < 11)
+			{
+				sam_fields[j] = token;
+				j++;
+				token = strtok(NULL, "\t");
+			}
+
+			int sequence_start_pos = atoi(sam_fields[3]) - 1;
+
 			strcpy(sam_line_cigar, sam_fields[5]);
 
 			int num_cigar_chars = 0;
 			int cigar_counter = 0;
-			int index = 0;
+			int cigar_index = 0;
 			for (j = 0; sam_line_cigar[j] != '\0'; j++)
 			{
 				if (isdigit(sam_line_cigar[j]))
@@ -560,32 +603,32 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 				}
 				else
 				{
-					cigar_vals[index] = cigar_counter;
-					cigar_chars[index] = sam_line_cigar[j];
+					cigar_vals[cigar_index] = cigar_counter;
+					cigar_chars[cigar_index] = sam_line_cigar[j];
 					num_cigar_chars++;
 
-					index++;
+					cigar_index++;
 					cigar_counter = 0;
 				}
 			}
 			strcpy(sequence, sam_fields[9]);
 
-			int index = 0;
+			int msa_index = 0;
 			int sequence_offset = 0;
 			int reference_offset = 0;
 			for (j = 0; j < num_cigar_chars; j++)
 			{
 				for (k = 0; k < cigar_vals[j]; k++)
 				{
-					int pos_in_msa = reference_index[sequence_start_pos + reference_offset];
+					int pos_in_msa = reference_indexes[best_sam_index][sequence_start_pos + reference_offset];
 
 					if (cigar_chars[j] == 'M')
 					{
 						if (pos_in_msa != -1)
 						{
-							msa_positions[index] = pos_in_msa;
-							bases[index] = toupper(sequence[sequence_offset]);
-							index++;
+							msa_positions[msa_index] = pos_in_msa;
+							bases[msa_index] = toupper(sequence[sequence_offset]);
+							msa_index++;
 						}
 						sequence_offset++;
 						reference_offset++;
@@ -605,7 +648,7 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 				}
 			}
 
-			for (j = 0; j < index; j++)
+			for (j = 0; j < msa_index; j++)
 			{
 				if (msa_positions[j] < msa_sequence_length)
 				{
@@ -640,7 +683,7 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 		fprintf(deletion_sites_file, "Site\tFrequency\n");
 		for (i = 0; i < msa_sequence_length; i++)
 		{
-			double deletion_ratio = (double)(deletions[i]) / sam_results_str.num_sam_lines;
+			double deletion_ratio = (double)(deletions[i]) / num_sam_lines;
 			if (deletion_ratio > deletion_threshold)
 			{
 				fprintf(deletion_sites_file, "%d\t%lf\n", i, deletion_ratio);
@@ -686,7 +729,7 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 		covered_sites[i] = -1;
 	}
 
-	int k = 0;
+	k = 0;
 	for (i = 0; i < msa_sequence_length; i++)
 	{
 		double total = 0;
@@ -708,32 +751,32 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 
 	int *bad_bases_count = (int *)calloc(msa_sequence_length, sizeof(int));
 	char **bad_base_char = (char **)malloc(msa_sequence_length * sizeof(char *));
-	for (i = 0; i < msa_sequence_length; i++)
+	for (msa_seq_idx = 0; msa_seq_idx < msa_sequence_length; msa_seq_idx++)
 	{
-		bad_base_char[i] = (char *)malloc(4 * sizeof(char));
+		bad_base_char[msa_seq_idx] = (char *)malloc(4 * sizeof(char));
 
 		j = 0;
 		for (k = 0; k < 4; k++)
 		{
-			if (allele[i][k] < freq_threshold)
+			if (allele[msa_seq_idx][k] < freq_threshold)
 			{
-				bad_bases_count[i]++;
+				bad_bases_count[msa_seq_idx]++;
 			}
 			else
 			{
 				switch (k)
 				{
 					case 0: 
-						bad_base_char[i][j] = 'A'; 
+						bad_base_char[msa_seq_idx][j] = 'A'; 
 						break;
 					case 1: 
-						bad_base_char[i][j] = 'G'; 
+						bad_base_char[msa_seq_idx][j] = 'G'; 
 						break;
 					case 2: 
-						bad_base_char[i][j] = 'C'; 
+						bad_base_char[msa_seq_idx][j] = 'C'; 
 						break;
 					case 3: 
-						bad_base_char[i][j] = 'T'; 
+						bad_base_char[msa_seq_idx][j] = 'T'; 
 						break;
 				}
 				j++;
@@ -746,6 +789,7 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 	int num_sequences = msa_str->num_sequences;
 	
 	int *incompat_counter = (int *)calloc(num_sequences, sizeof(int));
+	int *sequences_to_remove = (int *)calloc(num_sequences, sizeof(int));
 
 	int num_sequences_remaining;
 	int count;
@@ -806,12 +850,20 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
+	num_sequences_remaining = num_sequences;
 	for (i = 0; i < num_sequences; i++)
 	{
 		if (incompat_counter[i] == num_loop_iterations)
 		{
-			msa_str->sequence_names[i][0] = '\0';
+			sequences_to_remove[i] = 1;
+			num_sequences_remaining--;
 		}
+	}
+	printf("Number remaining: %d\n", num_sequences_remaining);
+
+	if (num_sequences != num_sequences_remaining)
+	{
+		prune_msa_sequences(msa_str, sequences_to_remove);
 	}
 
 	for (i = 0; i < msa_sequence_length; i++)
@@ -821,17 +873,5 @@ int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, 
 	free(bad_base_char);
 	free(bad_bases_count);
 	free(covered_sites);
-
-	num_sequences_remaining = 0;
-	for (i = 0; i < num_sequences; i++)
-	{
-		if (msa_str->sequence_names[i][0] != '\0')
-		{
-			num_sequences_remaining++;
-		}
-	}
-	printf("Number remaining: %d\n", num_sequences_remaining);
 	free(incompat_counter);
-
-	return num_sequences_remaining;
 }

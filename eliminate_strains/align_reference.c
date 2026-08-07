@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include "align_reference.h"
+#include "external/needleman_wunsch.h"
 
 /**
  * @brief Aligns the MSA reference sequence to the Bowtie2 reference sequence and builds a reference index array
@@ -87,8 +88,8 @@ void align_reference(ReferenceData *reference_data_str, char *msa_reference_file
 	scoring_t scoring;
 	scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
 	needleman_wunsch_align(msa_reference_sequence, bowtie2_reference_sequence, &scoring, nw, result);
-	printf("seqA: %s\n", result->result_a);
-	printf("seqB: %s\n", result->result_b);
+	// printf("seqA: %s\n", result->result_a);
+	// printf("seqB: %s\n", result->result_b);
 	printf("alignment score: %i\n", result->score);
 
 	// fill reference indicies
@@ -140,11 +141,11 @@ void align_reference(ReferenceData *reference_data_str, char *msa_reference_file
  * @param msa_reference_filepaths
  * @param bowtie2_reference_filepaths
  */
-void align_all_references(ReferenceData **reference_data_strs, int num_references, char **msa_reference_filepaths, char **bowtie2_reference_filepaths)
+void align_all_references(ReferenceData *reference_data_strs, int num_references, char **msa_reference_filepaths, char **bowtie2_reference_filepaths)
 {
 	int ref_idx;
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
-		align_reference(reference_data_strs[ref_idx], msa_reference_filepaths[ref_idx], bowtie2_reference_filepaths[ref_idx]);
+		align_reference(&reference_data_strs[ref_idx], msa_reference_filepaths[ref_idx], bowtie2_reference_filepaths[ref_idx]);
 	}
 }

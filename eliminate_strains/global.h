@@ -1,6 +1,8 @@
 #ifndef _GLOBAL_
 #define _GLOBAL_
 
+#include <pthread.h>
+
 #define FASTA_MAXLINE 30000 // max length of a single line sequence
 #define MAX_CIGAR 1000 // max number of CIGAR operations in an alignment
 #define MAX_READ_LENGTH 1000 // max length of a single read
@@ -15,7 +17,6 @@ typedef struct Options
 	char msa_filepath[1000];
 	char msa_reference_dir[1000];
 	char bowtie2_reference_dir[1000];
-	char variant_sites_dir[1000];
 	char problematic_sites_dir[1000];
 
 	// SAM file to write/read alignments
@@ -31,8 +32,8 @@ typedef struct Options
 
 	// output files
 	char output_filepath[1000];
-	char print_counts[1000];
-	char print_deletions[1000];
+	char print_counts_filepath[1000];
+	char print_deletions_filepath[1000];
 
 	// algorithm parameters
 	double freq;
@@ -43,11 +44,16 @@ typedef struct Options
 	int max_strains;
 	int llr;
 	int num_references;
+
+	// clean_reads parameters
+	int sequence_length_threshold;
+	int trim_length;
+	int fastq_trimmer_threshold;
 	
 	// performance parameters
-	int number_of_cores;
+	int num_threads;
 	int no_read_bam;
-	int remove_identical;
+	int remove_identical_sequences;
 } Options;
 
 /**
@@ -111,13 +117,16 @@ typedef struct ReferenceData
  */
 typedef struct MismatchMatrixThreadStruct
 {
-	int sam_line_start;
-	int sam_line_end;
+	int sam_partition_start;
+	int sam_partition_end;
 	int thread_index;
-	char **mismatch_matrix_row_partition;
+	int num_references;
+	
+	ReferenceData *reference_data_strs;
+	MSA *msa_str;
 
-	ReferenceData **reference_data_str_ptrs;
-	MSA *msa_str_ptr;
+	FILE *outfile;
+	pthread_mutex_t *write_mutex;
 } MismatchMatrixThreadStruct;
 
 #endif /* _GLOBAL_ */

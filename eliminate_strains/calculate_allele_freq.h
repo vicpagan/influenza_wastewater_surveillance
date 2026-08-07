@@ -1,11 +1,7 @@
 #ifndef CALCULATE_ALLELE_FREQ_H
 #define CALCULATE_ALLELE_FREQ_H
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
-#include <string.h>
-#include <ctype.h>
 
 #include "global.h"
 
@@ -28,7 +24,7 @@
  * @param reference_data_str 
  * @return int 
  */
-int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str);
+void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_strs, int num_references);
 
 
 /**
@@ -50,7 +46,7 @@ int calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thre
  * @param reference_data_str 
  * @return int 
  */
-int calculate_allele_freq(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_str);
+void calculate_allele_freq_single(double **allele, MSA *msa_str, double freq_threshold, struct timespec tstart, struct timespec tend, int coverage, int min_strains_remaining, int max_strains_remaining, int output_allele_counts, char *allele_counts_output_filepath, int output_deletions, char *deletions_output_filepath, double deletion_threshold, ReferenceData *reference_data_strs, int num_references);
 
 
 #endif // CALCULATE_ALLELE_FREQ_H

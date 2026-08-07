@@ -1,25 +1,31 @@
 # the compiler: gcc for C program
 CC = gcc
 
-#compiler flags:
+# compiler flags:
+# -Wall turns on most, but not all, compiler warnings
+# -O3 is for compiler optimizations
 # -g adds debugging information to the executable file
-#  -Wall turns on most, but not all, compiler warnings
-CFLAGS = -w
+CFLAGS = -Wall -O3
 DBGCFLAGS = -g
-#  -lz links the gz library
+
+# -lz links the gz library, -lpthread links pthreads
 LIBS = -lz -lpthread
-#sources
-SOURCES = eliminate_strains.c options.c 
-ALIGNMENT = align_reference.c needleman_wunsch.c alignment.c alignment_scoring.c
-OBJECTS = (SOURCES: .c = .o)
+
+# sources
+SOURCES = eliminate_strains.c calculate_allele_freq.c write_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
+EXTERNAL = external/needleman_wunsch.c external/alignment.c external/alignment_scoring.c
+OBJECTS = $(SOURCES:.c=.o)
+
 # the build target executable:
 TARGET = eliminate_strains
 
 all: $(TARGET)
-$(TARGET): $(TARGET).c
-	$(CC) -o $(TARGET) $(SOURCES) $(ALIGNMENT) $(LIBS)
-debug: $(TARGET).c
-	$(CC) $(DBGCFLAGS) -o $(TARGET) $(SOURCES) $(ALIGNMENT) $(LIBS)
+
+$(TARGET): $(SOURCES) $(EXTERNAL)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCES) $(EXTERNAL) $(LIBS)
+
+debug: $(SOURCES) $(EXTERNAL)
+	$(CC) $(DBGCFLAGS) -o $(TARGET) $(SOURCES) $(EXTERNAL) $(LIBS)
 
 clean:
 	$(RM) $(TARGET)

@@ -63,6 +63,8 @@ MSAs/
 reference_sequences/
 simulation/
 variants/
+eliminate_strains/*.sam*
+eliminate_strains/test.txt
 
 # notes
 NOTES.md

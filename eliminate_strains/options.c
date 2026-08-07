@@ -1,3 +1,8 @@
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <getopt.h>
+
 #include "options.h"
 
 static struct option long_options[] =
@@ -7,7 +12,6 @@ static struct option long_options[] =
 	{"samfile", required_argument, 0, 's'},
 	{"freq", required_argument, 0, 'f'},
 	{"outfile", required_argument, 0, 'o'},
-	{"variant_dir", required_argument, 0, 'v'},
 	{"paired", no_argument, 0, 'p'},
 	{"single_end", required_argument, 0, '0'},
 	{"forward_read", required_argument, 0, '1'},
@@ -26,6 +30,9 @@ static struct option long_options[] =
 	{"clean-my-reads", no_argument, 0, 'd'},
 	{"bowtie2-alignment_dir", required_argument, 0, 'B'},
 	{"num-references", required_argument, 0, 'N'},
+	{"seq-length-threshold", required_argument, 0, 'k'},
+	{"trim-length", required_argument, 0, 'w'},
+	{"fastq-trimmer-threshold", required_argument, 0, 'y'},
 	{0, 0, 0, 0}
 };
 
@@ -38,7 +45,6 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-s, --sam-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
 	-o, --output-filepath [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
-	-v, --variant_sites_dir [REQUIRED,DIR]	Directory of lists of variant sites\n\
 	-g, --MSA-reference-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-P, --paired				Using paired-reads\n\
@@ -47,7 +53,10 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-2, --reverse_file [FILE]		If using paired-reads, the reverse reads file\n\
 	-e, --EM-error [decimal]		Error rate for EM algorithm\n\
 	-d, --clean-my-reads                    Clean reads with fastq_quality_trimmer [must have FASTQ reads]\n\
-	-c, --coverage [integer]		Number of reads needed to calculate allele freq [default: 50]\n\
+	-k, --seq-length-threshold [int]	Minimum read length to keep when cleaning reads [default: 95]\n\
+	-w, --trim-length [int]		Number of bases to trim from each end when cleaning reads [default: 15]\n\
+	-y, --fastq-trimmer-threshold [int]	Quality threshold passed to fastq_quality_trimmer [default: 35]\n\
+	-c, --coverage [int]		Number of reads needed to calculate allele freq [default: 50]\n\
 	-a, --fasta				Reads are in FASTA format [default: FASTQ]\n\
 	-l, --llr				Perform the LLR procedure\n\
 	-m, --min [decimal]			Minimum strains remaining to invoke iterative procedure [default: 100]\n\
@@ -70,13 +79,6 @@ void print_help_statement()
 	return;
 }
 
-// TODO: add the following lines once problematic sites aspect is implemented (additionally make sure 'p' is in the getopt_long() string)
-// case 'v':
-// 			success = sscanf(optarg, "%s", opt->variant_sites_dir);
-// 			if (!success)
-// 				fprintf(stderr, "Invalid variant sites directory\n");
-// 			break;
-
 /**
  * @brief Parses CLI arguments into an Options struct
  * 
@@ -95,7 +97,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hPdlnaB:i:s:f:o:v:0:1:2:e:t:c:m:x:b:g:r:j:N:", long_options, &option_index);
+		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -108,16 +110,16 @@ void parse_options(int argc, char **argv, Options *opt)
 			opt->clean_reads = 1;
 			break;
 		case 'b':
-			success = sscanf(optarg, "%s", opt->print_counts);
+			success = sscanf(optarg, "%s", opt->print_counts_filepath);
 			if (!success)
 				fprintf(stderr, "Invalid counts file\n");
 			break;
 		case 'r':
-			success = sscanf(optarg, "%s", opt->print_deletions);
+			success = sscanf(optarg, "%s", opt->print_deletions_filepath);
 			if (!success)
 				fprintf(stderr, "Invalid deletions file\n");
 			break;
-		case 'P':
+		case 'p':
 			opt->paired = 1;
 			break;
 		case 'a':
@@ -175,7 +177,7 @@ void parse_options(int argc, char **argv, Options *opt)
 				fprintf(stderr, "Invalid threshold\n");
 			break;
 		case 't':
-			success = sscanf(optarg, "%d", &(opt->number_of_cores));
+			success = sscanf(optarg, "%d", &(opt->num_threads));
 			if (!success)
 				fprintf(stderr, "Invalid number of cores\n");
 			break;
@@ -204,15 +206,25 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid out file\n");
 			break;
-		case 'v':
-			success = sscanf(optarg, "%s", opt->variant_sites_dir);
-			if (!success)
-				fprintf(stderr, "Invalid variant sites directory\n");
-			break;
 		case 'N':
 			success = sscanf(optarg, "%d", &(opt->num_references));
 			if (!success)
 				fprintf(stderr, "Invalid number of references\n");
+			break;
+		case 'k':
+			success = sscanf(optarg, "%d", &(opt->sequence_length_threshold));
+			if (!success)
+				fprintf(stderr, "Invalid sequence length threshold\n");
+			break;
+		case 'w':
+			success = sscanf(optarg, "%d", &(opt->trim_length));
+			if (!success)
+				fprintf(stderr, "Invalid trim length\n");
+			break;
+		case 'y':
+			success = sscanf(optarg, "%d", &(opt->fastq_trimmer_threshold));
+			if (!success)
+				fprintf(stderr, "Invalid fastq trimmer threshold\n");
 			break;
 		}
 	}
