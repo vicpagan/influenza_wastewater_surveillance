@@ -103,7 +103,7 @@ int main(int argc, char **argv)
 		int invoke_cleaning = calculate_error_rates(sam_path);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
-			// clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
+			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
 		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
 
