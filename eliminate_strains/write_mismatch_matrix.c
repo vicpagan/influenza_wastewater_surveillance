@@ -16,7 +16,6 @@ void *write_mismatch_matrix_paired(void *ptr)
 	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
 	MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
-    int thread_index = thread_str->thread_index;
 	int sam_partition_start = thread_str->sam_partition_start;
 	int sam_partition_end = thread_str->sam_partition_end;
 	int num_references = thread_str->num_references;
@@ -69,13 +68,18 @@ void *write_mismatch_matrix_paired(void *ptr)
 
 	int *current_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
 
+	int *best_match_ref = (int *)malloc(num_msa_sequences * sizeof(int));
+	int *num_best_matches_per_ref = (int *)malloc(num_references * sizeof(int));
+	int *alignment_size_per_ref = (int *)malloc(num_references * sizeof(int));
+
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx = sam_line_idx + 2)
 	{
 		for (i = 0; i < num_msa_sequences; i++)
 		{
 			current_mismatch_matrix_row[i] = INT32_MAX;
+			best_match_ref[i] = -1;
 		}
-		int best_alignment_size = -1;
+		int any_mapped = 0;
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
@@ -108,6 +112,8 @@ void *write_mismatch_matrix_paired(void *ptr)
 			int first_status = parse_sam_flags(atoi(first_sam_fields[1]));
 			if (first_status == 0 || first_status == 1)
 			{
+				any_mapped = 1;
+
 				int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
 				int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
 
@@ -272,6 +278,8 @@ void *write_mismatch_matrix_paired(void *ptr)
 					k++;
 				}
 
+				alignment_size_per_ref[ref_idx] = current_alignment_size;
+
 				int nm;
 				for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 				{
@@ -291,27 +299,49 @@ void *write_mismatch_matrix_paired(void *ptr)
 					if (nm < current_mismatch_matrix_row[msa_seq_idx])
 					{
 						current_mismatch_matrix_row[msa_seq_idx] = nm;
+						best_match_ref[msa_seq_idx] = ref_idx;
 					}
 				}
-
-				best_alignment_size = current_alignment_size;
 			}
 		}
 
-		if (best_alignment_size != -1)
-		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
-			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", current_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
-			}
+		if (any_mapped)
+        {
+            for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+            {
+                num_best_matches_per_ref[ref_idx] = 0;
+            }
+            for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+            {
+                if (best_match_ref[msa_seq_idx] != -1)
+                {
+                    num_best_matches_per_ref[best_match_ref[msa_seq_idx]]++;
+                }
+            }
 
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
-			pthread_mutex_unlock(thread_str->write_mutex);
-		}
+            int best_ref_idx = 0;
+            int best_count = -1;
+            for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+            {
+                if (num_best_matches_per_ref[ref_idx] > best_count)
+                {
+                    best_count = num_best_matches_per_ref[ref_idx];
+                    best_ref_idx = ref_idx;
+                }
+            }
+
+            sprintf(row_buffer, "%s\t%d", readname, alignment_size_per_ref[best_ref_idx]);
+            for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+            {
+                char num_buffer[16];
+                sprintf(num_buffer, "\t%d", current_mismatch_matrix_row[msa_seq_idx]);
+                strcat(row_buffer, num_buffer);
+            }
+
+            pthread_mutex_lock(thread_str->write_mutex);
+            fprintf(thread_str->outfile, "%s\n", row_buffer);
+            pthread_mutex_unlock(thread_str->write_mutex);
+        }
 	}
 
 	free(row_buffer);
@@ -333,6 +363,9 @@ void *write_mismatch_matrix_paired(void *ptr)
 	free(merged_msa_positions);
 	free(merged_bases);
 	free(current_mismatch_matrix_row);
+	free(best_match_ref);
+	free(num_best_matches_per_ref);
+	free(alignment_size_per_ref);
 	return NULL;
 }
 
@@ -341,7 +374,6 @@ void *write_mismatch_matrix_single(void *ptr)
 	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
 	MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
-    int thread_index = thread_str->thread_index;
 	int sam_partition_start = thread_str->sam_partition_start;
 	int sam_partition_end = thread_str->sam_partition_end;
 	int num_references = thread_str->num_references;
@@ -384,13 +416,18 @@ void *write_mismatch_matrix_single(void *ptr)
 
 	int *current_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
 
+	int *best_match_ref = (int *)malloc(num_msa_sequences * sizeof(int));
+	int *num_best_matches_per_ref = (int *)malloc(num_references * sizeof(int));
+	int *alignment_size_per_ref = (int *)malloc(num_references * sizeof(int));
+
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx++)
 	{
 		for (i = 0; i < num_msa_sequences; i++)
 		{
 			current_mismatch_matrix_row[i] = INT32_MAX;
+			best_match_ref[i] = -1;
 		}
-		int best_alignment_size = -1;
+		int any_mapped = 0;
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
@@ -414,6 +451,8 @@ void *write_mismatch_matrix_single(void *ptr)
 			int status = parse_sam_flags(atoi(sam_fields[1]));
 			if (status != -1)
 			{
+				any_mapped = 1;
+
 				int sequence_start_pos = atoi(sam_fields[3]) - 1;
 
 				strcpy(sam_line_cigar, sam_fields[5]);
@@ -474,6 +513,8 @@ void *write_mismatch_matrix_single(void *ptr)
 					}
 				}
 
+				alignment_size_per_ref[ref_idx] = current_alignment_size;
+
 				int nm;
 				for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 				{
@@ -493,27 +534,49 @@ void *write_mismatch_matrix_single(void *ptr)
 					if (nm < current_mismatch_matrix_row[msa_seq_idx])
 					{
 						current_mismatch_matrix_row[msa_seq_idx] = nm;
+						best_match_ref[msa_seq_idx] = ref_idx;
 					}
 				}
-
-				best_alignment_size = current_alignment_size;
 			}
 		}
 
-		if (best_alignment_size != -1)
-		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
-			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", current_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
-			}
+		if (any_mapped)
+        {
+            for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+            {
+                num_best_matches_per_ref[ref_idx] = 0;
+            }
+            for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+            {
+                if (best_match_ref[msa_seq_idx] != -1)
+                {
+                    num_best_matches_per_ref[best_match_ref[msa_seq_idx]]++;
+                }
+            }
 
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
-			pthread_mutex_unlock(thread_str->write_mutex);
-		}
+            int best_ref_idx = 0;
+            int best_count = -1;
+            for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+            {
+                if (num_best_matches_per_ref[ref_idx] > best_count)
+                {
+                    best_count = num_best_matches_per_ref[ref_idx];
+                    best_ref_idx = ref_idx;
+                }
+            }
+
+            sprintf(row_buffer, "%s\t%d", readname, alignment_size_per_ref[best_ref_idx]);
+            for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+            {
+                char num_buffer[16];
+                sprintf(num_buffer, "\t%d", current_mismatch_matrix_row[msa_seq_idx]);
+                strcat(row_buffer, num_buffer);
+            }
+
+            pthread_mutex_lock(thread_str->write_mutex);
+            fprintf(thread_str->outfile, "%s\n", row_buffer);
+            pthread_mutex_unlock(thread_str->write_mutex);
+        }
 	}
 
 	free(row_buffer);
@@ -526,6 +589,9 @@ void *write_mismatch_matrix_single(void *ptr)
 	free(msa_positions);
 	free(bases);
 	free(current_mismatch_matrix_row);
+	free(best_match_ref);
+	free(num_best_matches_per_ref);
+	free(alignment_size_per_ref);
 	return NULL;
 }
 
