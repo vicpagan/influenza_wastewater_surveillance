@@ -42,9 +42,15 @@ void trim_ends_and_filter_fastq(const char *prefix, int sequence_length_threshol
 	char *plus = (char *)calloc(2, sizeof(char));
 	char *quality = (char *)calloc(FASTA_MAXLINE,  sizeof(char));
 
-	size_t len = 0;
+	size_t strain_name_len = 0;
+	size_t sequence_len = 0;
+	size_t plus_len = 0;
+	size_t quality_len = 0;
 	int i;
-	while (getline(&strain_name, &len, input_file) != -1 && getline(&sequence, &len, input_file) != -1 && getline(&plus, &len, input_file) != -1 && getline(&quality, &len, input_file) != -1)
+	while (getline(&strain_name, &strain_name_len, input_file) != -1
+		&& getline(&sequence, &sequence_len, input_file) != -1
+		&& getline(&plus, &plus_len, input_file) != -1
+		&& getline(&quality, &quality_len, input_file) != -1)
     {
 		int seq_length = strlen(sequence);
 
@@ -110,9 +116,11 @@ void trim_ends_and_filter_fasta(const char *prefix, int sequence_length_threshol
 	char *strain_name = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 	char *sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
-	size_t len = 0;
+	size_t strain_name_len = 0;
+	size_t sequence_len = 0;
 	int i;
-	while (getline(&strain_name, &len, input_file) != -1 && getline(&sequence, &len, input_file) != -1)
+	while (getline(&strain_name, &strain_name_len, input_file) != -1
+		&& getline(&sequence, &sequence_len, input_file) != -1)
     {
 		int seq_length = strlen(sequence);
 
@@ -162,22 +170,12 @@ char *get_fastx_prefix(const char *filepath)
  * @param single_end_filepath 
  * @param forward_end_filepath 
  * @param reverse_end_filepath 
- * @param using_paired 
- * @param using_fasta 
- * @param fastq_trimmer_threshold 
- */
-/**
- * @brief 
- * 
- * @param single_end_filepath 
- * @param forward_end_filepath 
- * @param reverse_end_filepath 
+ * @param working_dir 
  * @param using_paired 
  * @param using_fasta 
  * @param sequence_length_threshold 
  * @param trim_length 
  * @param fastq_trimmer_threshold 
- * @param working_dir 
  */
 void clean_reads(char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int sequence_length_threshold, int trim_length, int fastq_trimmer_threshold)
 {
