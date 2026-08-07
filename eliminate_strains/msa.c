@@ -88,8 +88,9 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
 		else
 		{
 			// read in sequence line
-			int length = strlen(buffer);
+			buffer[strcspn(buffer, "\r\n")] = '\0';
 
+			int length = strlen(buffer);
 			for (i = 0; i < length; i++)
 			{
 				switch (buffer[i])

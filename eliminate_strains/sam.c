@@ -75,12 +75,13 @@ void parse_sam_info(gzFile sam_results_file, SAMResults *sam_results_str)
 void read_sam_lines(gzFile sam_results_file, SAMResults *sam_results_str)
 {
 	char buffer[FASTA_MAXLINE];
-
+	
 	int i = 0;
-	while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)	
+	while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)
 	{
 		if (buffer[0] != '@')
 		{
+			buffer[strcspn(buffer, "\r\n")] = '\0';
 			strcpy(sam_results_str->sam_results[i], buffer);
 			i++;
 		}
