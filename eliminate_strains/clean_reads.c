@@ -37,15 +37,16 @@ void trim_ends_and_filter_fastq(const char *prefix, int sequence_length_threshol
 		exit(1);
 	}
 	
-	char *strain_name = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-	char *sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-	char *plus = (char *)calloc(2, sizeof(char));
-	char *quality = (char *)calloc(FASTA_MAXLINE,  sizeof(char));
+	char *strain_name = NULL;
+	char *sequence = NULL;
+	char *plus = NULL;
+	char *quality = NULL;
 
 	size_t strain_name_len = 0;
 	size_t sequence_len = 0;
 	size_t plus_len = 0;
 	size_t quality_len = 0;
+	
 	int i;
 	while (getline(&strain_name, &strain_name_len, input_file) != -1
 		&& getline(&sequence, &sequence_len, input_file) != -1
@@ -113,11 +114,12 @@ void trim_ends_and_filter_fasta(const char *prefix, int sequence_length_threshol
 		exit(1);
 	}
 	
-	char *strain_name = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-	char *sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
+	char *strain_name = NULL;
+	char *sequence = NULL;
 
 	size_t strain_name_len = 0;
 	size_t sequence_len = 0;
+
 	int i;
 	while (getline(&strain_name, &strain_name_len, input_file) != -1
 		&& getline(&sequence, &sequence_len, input_file) != -1)
