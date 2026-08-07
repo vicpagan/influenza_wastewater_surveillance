@@ -52,6 +52,7 @@ typedef struct Options
 	int sequence_length_threshold;
 	int trim_length;
 	int fastq_trimmer_threshold;
+	int verbose;
 	
 	// performance parameters
 	int num_threads;

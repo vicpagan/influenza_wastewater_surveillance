@@ -23,7 +23,7 @@ int calculate_error_rates(char *sam_filepath, int end_region_length, double end_
  * @param using_paired_end_reads 
  * @param using_fasta_format 
  */
-void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format);
+void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int verbose);
 
 /**
  * @brief 
@@ -37,6 +37,6 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
  * @param using_paired_end_reads 
  * @param using_fasta_format 
  */
-void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format);
+void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_forma, int verbose);
 
 #endif // BOWTIE_ALIGNMENT_H

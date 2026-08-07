@@ -65,6 +65,7 @@ int main(int argc, char **argv)
 	opt.fastq_trimmer_threshold = 35;
 	opt.end_region_length = 10;
 	opt.end_region_error_mult = 3.0;
+	opt.verbose = 0;
 	opt.num_threads = 1;
 	strcpy(opt.working_dir, ".");
 	memset(opt.print_counts_filepath, '\0', 1000);
@@ -100,7 +101,7 @@ int main(int argc, char **argv)
 
 		char *sam_path = get_filepath_in_working_dir(sam_filename, opt.working_dir);
 
-		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
+		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
 		int invoke_cleaning = calculate_error_rates(sam_path, opt.end_region_length, opt.end_region_error_mult);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
@@ -109,7 +110,7 @@ int main(int argc, char **argv)
 			printf("Error rates of reads are too high! Cleaning reads...\n");
 			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
-		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format);
+		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
 
 		printf("Reading in SAM results for reference %d...\n", ref_idx);
 		reference_data_strs[ref_idx].sam_results_str = read_in_sam_results(sam_path);

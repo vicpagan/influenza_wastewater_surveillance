@@ -144,12 +144,23 @@ int calculate_error_rates(char *sam_filepath, int end_region_length, double end_
  * @param working_dir 
  * @param using_paired_end_reads 
  * @param using_fasta_format 
+ * @param verbose 
  */
-void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format)
+void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int verbose)
 {
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
 	char *index_prefix = get_filepath_in_working_dir(bowtie2_reference_path, working_dir);
+
+	char quiet_flag[16];
+	if (verbose)
+	{
+		strcpy(quiet_flag, "");
+	}
+	else
+	{
+		strcpy(quiet_flag, " --quiet");
+	}
 
 	char index_check_path[1150];
 	sprintf(index_check_path, "%s.1.bt2", index_prefix);
@@ -159,26 +170,25 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
+		sprintf(buffer, "bowtie2-build%s -f %s %s", quiet_flag, bowtie2_reference_path, index_prefix);
 		system(buffer);
 	}
 
 	if (using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all -f -x %s -1 %s -2 %s -S %s", index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all%s -f -x %s -1 %s -2 %s -S %s", quiet_flag, index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
 	else if (!using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all -f -x %s -U %s -S %s", index_prefix, single_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all%s -f -x %s -U %s -S %s", quiet_flag, index_prefix, single_end_filepath, sam_results_filepath);
 	}
 	else if (using_paired_end_reads && !using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all -x %s -1 %s -2 %s -S %s", index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all%s -x %s -1 %s -2 %s -S %s", quiet_flag, index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2 --all -x %s -U %s -S %s", index_prefix, single_end_filepath, sam_results_filepath);
-		
+		sprintf(buffer, "bowtie2 --all%s -x %s -U %s -S %s", quiet_flag, index_prefix, single_end_filepath, sam_results_filepath);
 	}
 	system(buffer);
 	free(buffer);
@@ -196,12 +206,23 @@ void perform_bowtie_alignment(char *bowtie2_reference_path, char *single_end_fil
  * @param working_dir 
  * @param using_paired_end_reads 
  * @param using_fasta_format 
+ * @param verbose 
  */
-void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format)
+void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *sam_results_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int verbose)
 {
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
 
 	char *index_prefix = get_filepath_in_working_dir(bowtie2_reference_path, working_dir);
+
+	char quiet_flag[16];
+	if (verbose)
+	{
+		strcpy(quiet_flag, "");
+	}
+	else
+	{
+		strcpy(quiet_flag, " --quiet");
+	}
 
 	char index_check_path[1150];
 	sprintf(index_check_path, "%s.1.bt2", index_prefix);
@@ -211,26 +232,25 @@ void perform_bowtie_alignment_xeq(char *bowtie2_reference_path, char *single_end
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2-build -f %s %s", bowtie2_reference_path, index_prefix);
+		sprintf(buffer, "bowtie2-build%s -f %s %s", quiet_flag, bowtie2_reference_path, index_prefix);
 		system(buffer);
 	}
 
 	if (using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -1 %s -2 %s -S %s", index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all --xeq%s -f -x %s -1 %s -2 %s -S %s", quiet_flag, index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
 	else if (!using_paired_end_reads && using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -f -x %s -U %s -S %s", index_prefix, single_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all --xeq%s -f -x %s -U %s -S %s", quiet_flag, index_prefix, single_end_filepath, sam_results_filepath);
 	}
 	else if (using_paired_end_reads && !using_fasta_format)
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -x %s -1 %s -2 %s -S %s", index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
+		sprintf(buffer, "bowtie2 --all --xeq%s -x %s -1 %s -2 %s -S %s", quiet_flag, index_prefix, forward_end_filepath, reverse_end_filepath, sam_results_filepath);
 	}
 	else
 	{
-		sprintf(buffer, "bowtie2 --all --xeq -x %s -U %s -S %s", index_prefix, single_end_filepath, sam_results_filepath);
-		
+		sprintf(buffer, "bowtie2 --all --xeq%s -x %s -U %s -S %s", quiet_flag, index_prefix, single_end_filepath, sam_results_filepath);
 	}
 	system(buffer);
 	free(buffer);

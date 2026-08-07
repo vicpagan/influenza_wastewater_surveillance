@@ -36,6 +36,7 @@ static struct option long_options[] =
 	{"working-dir", required_argument, 0, 'W'},
 	{"end-region-length", required_argument, 0, 'q'},
 	{"end-region-error-multiplier", required_argument, 0, 'u'},
+	{"verbose", no_argument, 0, 'v'},
 	{0, 0, 0, 0}
 };
 
@@ -73,6 +74,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-j, --threshold-for-deleted-sites	Threshold to print deleted sites [default: 0.001]\n\
 	-B, --bowtie2-alignment_dir [REQUIRED,DIR]		Bowtie2 reference\n\
 	-W, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
+	-v, --verbose				Show verbose debug output from Bowtie2 commands\n\
 	\n";
 
 /**
@@ -103,7 +105,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:", long_options, &option_index);
+		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:v", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -246,6 +248,9 @@ void parse_options(int argc, char **argv, Options *opt)
 			success = sscanf(optarg, "%lf", &(opt->end_region_error_mult));
 			if (!success)
 				fprintf(stderr, "Invalid end region error multiplier\n");
+			break;
+		case 'v':
+			opt->verbose = 1;
 			break;
 		}
 	}
