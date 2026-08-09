@@ -172,8 +172,8 @@ MSA read_in_msa(char *msa_filepath, const char *reference_sequence_name)
 		msa_str.sequences = malloc(msa_str.num_sequences * sizeof(char *));
 		for (int i = 0; i < msa_str.num_sequences; i++)
 		{
-			msa_str.sequence_names[i] = malloc((msa_str.max_sequence_name_length + 1) * sizeof(char));
-			msa_str.sequences[i] = malloc((msa_str.sequence_length + 1) * sizeof(char));
+			msa_str.sequence_names[i] = calloc((msa_str.max_sequence_name_length + 1), sizeof(char));
+			msa_str.sequences[i] = calloc((msa_str.sequence_length + 1), sizeof(char));
 		}
 
 		gzrewind(msa_file);
@@ -255,6 +255,7 @@ void remove_identical_sequences(MSA *msa_str)
 
 					if (nm == 0)
 					{
+						printf("Removing sequence %d\n", j);
 						sequences_to_remove[j] = 1;
 						num_sequences_removed++;
 					}

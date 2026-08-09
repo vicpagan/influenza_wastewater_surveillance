@@ -37,6 +37,7 @@ static struct option long_options[] =
 	{"end-region-length", required_argument, 0, 'q'},
 	{"end-region-error-multiplier", required_argument, 0, 'u'},
 	{"verbose", no_argument, 0, 'v'},
+	{"remove-identical", no_argument, 0, 'R'},
 	{0, 0, 0, 0}
 };
 
@@ -49,17 +50,17 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-s, --sam-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
 	-o, --output-filepath [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
-	-g, --MSA-reference-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
+	-g, --MSA-references-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-p, --paired				Using paired-reads\n\
 	-0, --single_end_file [FILE]		Single-end reads\n\
-	-1, --forward_file [FILE]		If using paired-reads, the forward reads file\n\
-	-2, --reverse_file [FILE]		If using paired-reads, the reverse reads file\n\
+	-1, --forward-file [FILE]		If using paired-reads, the forward reads file\n\
+	-2, --reverse-file [FILE]		If using paired-reads, the reverse reads file\n\
 	-e, --EM-error [decimal]		Error rate for EM algorithm [default: 0.005]\n\
 	-d, --clean-my-reads                    Clean reads with fastq_quality_trimmer [must have FASTQ reads]\n\
 	-k, --seq-length-threshold [integer]	Minimum read length to keep when cleaning reads [default: 95]\n\
 	-w, --trim-length [integer]		Number of bases to trim from each end when cleaning reads [default: 15]\n\
-	-y, --fastq-trimmer-threshold [integer]	Quality threshold passed to fastq_quality_trimmer [default: 20]\n\
+	-y, --fastq-trimmer-threshold [integer]	Quality threshold passed to fastq_quality_trimmer [default: 35]\n\
 	-q, --end-region-length [integer]	Number of bases at each read end checked for increased mismatch rate when deciding whether to clean reads [default: 10]\n\
 	-u, --end-region-error-multiplier [decimal]	How many times higher the end error rate must be vs. the middle to trigger cleaning [default: 3.0]\n\
 	-c, --coverage [integer]		Number of reads needed to calculate allele freq [default: 50]\n\
@@ -75,6 +76,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-B, --bowtie2-alignment_dir [REQUIRED,DIR]		Bowtie2 reference\n\
 	-W, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
 	-v, --verbose				Show verbose debug output from Bowtie2 commands\n\
+	-R, --remove-identical			Remove identical strains from the MSA before processing\n\
 	\n";
 
 /**
@@ -105,7 +107,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:v", long_options, &option_index);
+		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:vR", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -251,6 +253,9 @@ void parse_options(int argc, char **argv, Options *opt)
 			break;
 		case 'v':
 			opt->verbose = 1;
+			break;
+		case 'R':
+			opt->remove_identical_sequences = 1;
 			break;
 		}
 	}

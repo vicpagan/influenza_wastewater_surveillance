@@ -59,10 +59,10 @@ dkms.conf
 covid_eliminate_strains/
 
 # testing strains
-MSAs/
 reference_sequences/
+test_reference_sequences/
 simulation/
-variants/
+test_simulation/
 eliminate_strains/*.sam*
 eliminate_strains/test.txt
 working/
