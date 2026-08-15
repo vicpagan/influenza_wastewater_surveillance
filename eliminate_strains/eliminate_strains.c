@@ -114,14 +114,15 @@ int main(int argc, char **argv)
 
 		printf("Reading in SAM results for reference %d...\n", ref_idx);
 		reference_data_strs[ref_idx].sam_results_str = read_in_sam_results(sam_path);
+		
+		reference_data_strs[ref_idx].reference_name = read_fastx_header_name(msa_reference_filepaths[ref_idx]);
+
 		free(sam_path);
 	}
 
 	printf("Reading in MSA...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	char *reference_name = read_fasta_header_name(msa_reference_filepaths[0]);
-	MSA msa_str = read_in_msa(opt.msa_filepath, reference_name);
-	free(reference_name);
+	MSA msa_str = read_in_msa(opt.msa_filepath);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Number of strains: %d\n", msa_str.num_sequences);
@@ -182,6 +183,7 @@ int main(int argc, char **argv)
 		}
 		free(reference_data_strs[ref_idx].sam_results_str.sam_results);
 		free(reference_data_strs[ref_idx].reference_index);
+		free(reference_data_strs[ref_idx].reference_name);
 	}
 	free(reference_data_strs);
 

@@ -19,7 +19,7 @@ void parse_msa_info(gzFile msa_file, MSA *msa_str);
  * @param msa_str 
  * @param reference_sequence_name 
  */
-void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_sequence_name);
+void read_msa_sequences(gzFile msa_file, MSA *msa_str);
 
 /**
  * @brief 
@@ -28,7 +28,7 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
  * @param reference_sequence_name 
  * @return MSA 
  */
-MSA read_in_msa(char *msa_filepath, const char *reference_sequence_name);
+MSA read_in_msa(char *msa_filepath);
 
 /**
  * @brief 

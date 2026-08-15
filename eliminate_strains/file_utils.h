@@ -7,7 +7,7 @@
  * @param fasta_path 
  * @return char* 
  */
-char *read_fasta_header_name(char *fasta_filepath);
+char *read_fastx_header_name(char *fasta_filepath);
 
 /**
  * @brief 

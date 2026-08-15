@@ -12,18 +12,18 @@
  * @param fasta_path 
  * @return char* 
  */
-char *read_fasta_header_name(char *fasta_filepath)
+char *read_fastx_header_name(char *fastx_filepath)
 {
-	FILE *file = fopen(fasta_filepath, "r");
+	FILE *file = fopen(fastx_filepath, "r");
 	if (file == NULL)
 	{
-		fprintf(stderr, "Error: could not open reference file '%s' to read its name\n", fasta_filepath);
+		fprintf(stderr, "Error: could not open reference file '%s' to read its name\n", fastx_filepath);
 		exit(1);
 	}
 	char buffer[FASTA_MAXLINE];
 	if (fgets(buffer, FASTA_MAXLINE, file) == NULL || buffer[0] != '>')
 	{
-		fprintf(stderr, "Error: '%s' does not start with a FASTA header line\n", fasta_filepath);
+		fprintf(stderr, "Error: '%s' does not start with a FASTX header line\n", fastx_filepath);
 		exit(1);
 	}
 	fclose(file);

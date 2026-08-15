@@ -59,12 +59,11 @@ void parse_msa_info(gzFile msa_file, MSA *msa_str)
  * @param msa The reference to the stored MSA instance
  * @param ref_seq_name The name of a reference sequence
  */
-void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_sequence_name)
+void read_msa_sequences(gzFile msa_file, MSA *msa_str)
 {
 	char buffer[FASTA_MAXLINE];
 
 	int seq_idx = -1;
-	// int found_reference = 0;
 
 	int i;
 	while (gzgets(msa_file, buffer, FASTA_MAXLINE) != NULL)
@@ -79,11 +78,6 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
 				msa_str->sequence_names[seq_idx][i - 1] = buffer[i];
 			}
 			msa_str->sequence_names[seq_idx][i - 1] = '\0';
-
-			// if (strcmp(msa_str->sequence_names[seq_idx], reference_sequence_name) == 0)
-			// {
-			// 	found_reference = 1;
-			// }
 		}
 		else
 		{
@@ -98,25 +92,21 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
                     case 'A':
                     case 'a':
                         msa_str->sequences[seq_idx][i] = 'A';
-						// allele_frequency[i][0]++;
                         break;
 
                     case 'C':
                     case 'c':
                         msa_str->sequences[seq_idx][i] = 'C';
-						// allele_frequency[i][1]++;
                         break;
 
                     case 'G':
                     case 'g':
                         msa_str->sequences[seq_idx][i] = 'G';
-						// allele_frequency[i][2]++;
                         break;
 
                     case 'T':
                     case 't':
                         msa_str->sequences[seq_idx][i] = 'T';
-						// allele_frequency[i][3]++;
                         break;
 
                     case '-':
@@ -128,12 +118,6 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
                         break;
                 }
 			}
-
-			// if (found_reference)
-			// {
-			// 	msa_str->reference_sequence_index = index;
-			// 	found_reference = 0;
-			// }
 		}
 	}
 }
@@ -145,7 +129,7 @@ void read_msa_sequences(gzFile msa_file, MSA *msa_str, const char *reference_seq
  * @param ref_seq_name The name of a reference sequence
  * @return MSA Instance of an MSA struct that stores the MSA data
  */
-MSA read_in_msa(char *msa_filepath, const char *reference_sequence_name)
+MSA read_in_msa(char *msa_filepath)
 {
 	MSA msa_str;
 	
@@ -157,7 +141,6 @@ MSA read_in_msa(char *msa_filepath, const char *reference_sequence_name)
 		msa_str.num_sequences = -1;
 		msa_str.sequence_length = -1;
 		msa_str.max_sequence_name_length = -1;
-		// msa_str.reference_sequence_index = -1;
 
 		msa_str.sequence_names = NULL;
 		msa_str.sequences = NULL;
@@ -179,7 +162,7 @@ MSA read_in_msa(char *msa_filepath, const char *reference_sequence_name)
 		gzrewind(msa_file);
 
 		// parse and store MSA sequences and their names
-		read_msa_sequences(msa_file, &msa_str, reference_sequence_name);
+		read_msa_sequences(msa_file, &msa_str);
 
 		gzclose(msa_file);
 	}

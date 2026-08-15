@@ -69,7 +69,6 @@ typedef struct MSA
 	int num_sequences;
 	int sequence_length;
 	int max_sequence_name_length;
-	// int reference_sequence_index;
 
 	char **sequences;
 	char **sequence_names;
@@ -110,6 +109,9 @@ typedef struct SAMResults
  */
 typedef struct ReferenceData
 {
+	int reference_sequence_index;
+	char *reference_name;
+
 	int *reference_index;
 	// ProblematicSites problematic_sites_str;
 	SAMResults sam_results_str;
