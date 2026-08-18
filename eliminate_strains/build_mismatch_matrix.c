@@ -574,6 +574,7 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	int read_cursor = 0;
 	for (i = 0; i < num_threads; i++)
 	{
+		printf("Looping for thread number %d", i);
 		int this_thread_num_reads = reads_per_thread;
 		if (i < remainder)
 		{
