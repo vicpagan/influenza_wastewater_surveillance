@@ -12,7 +12,7 @@ DBGCFLAGS = -g
 LIBS = -lz -lpthread
 
 # sources
-SOURCES = eliminate_strains.c calculate_allele_freq.c write_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
+SOURCES = eliminate_strains.c calculate_allele_freq.c build_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
 EXTERNAL = external/needleman_wunsch.c external/alignment.c external/alignment_scoring.c
 OBJECTS = $(SOURCES:.c=.o)
 

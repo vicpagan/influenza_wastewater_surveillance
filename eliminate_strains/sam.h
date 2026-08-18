@@ -15,25 +15,11 @@ int parse_sam_flags(int flag_value);
 /**
  * @brief 
  * 
- * @param sam_results_file 
- * @param sam_results_str 
- */
-void parse_sam_info(gzFile sam_results_file, SAMResults *sam_results_str);
-
-/**
- * @brief 
- * 
- * @param sam_results_file 
- * @param sam_results_str 
- */
-void read_sam_lines(gzFile sam_results_file, SAMResults *sam_results_str);
-
-/**
- * @brief 
- * 
- * @param sam_results_filepath 
+ * @param sam_results_filepaths 
+ * @param num_references 
  * @return SAMResults 
  */
-SAMResults read_in_sam_results(char *sam_results_filepath);
+SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references);
+
 
 #endif // SAM_H

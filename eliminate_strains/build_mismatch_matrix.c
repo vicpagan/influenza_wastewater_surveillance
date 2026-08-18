@@ -7,48 +7,37 @@
 #include <assert.h>
 #include <pthread.h>
 
-#include "write_mismatch_matrix.h"
+#include "build_mismatch_matrix.h"
 #include "sam.h"
 #include "msa.h"
 
-void *write_mismatch_matrix_paired(void *ptr)
+void *build_mismatch_matrix_paired(void *ptr)
 {
 	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
-	MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
-	int sam_partition_start = thread_str->sam_partition_start;
-	int sam_partition_end = thread_str->sam_partition_end;
-	int num_references = thread_str->num_references;
+	BuildMismatchMatrixThread *bmm_thread_str = (BuildMismatchMatrixThread *)ptr;
+	int sam_partition_start = bmm_thread_str->sam_partition_start;
+	int sam_partition_end = bmm_thread_str->sam_partition_end;
 
-	ReferenceData *reference_data_strs = thread_str->reference_data_strs;
-	SAMResults sam_results_strs[num_references];
-	int *reference_indexes[num_references];
+	ReferencesData *references_data_str = bmm_thread_str->references_data_str;
+	int num_references = references_data_str->num_references;
 
-	int num_sam_lines = reference_data_strs[0].sam_results_str.num_sam_lines;
-	int max_sam_line_length = reference_data_strs[0].sam_results_str.max_sam_line_length;
-	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
-	{
-		sam_results_strs[ref_idx] = reference_data_strs[ref_idx].sam_results_str;
-		reference_indexes[ref_idx] = reference_data_strs[ref_idx].reference_index;
-		assert(num_sam_lines == sam_results_strs[ref_idx].num_sam_lines);
-		if (sam_results_strs[ref_idx].max_sam_line_length > max_sam_line_length)
-		{
-			max_sam_line_length = sam_results_strs[ref_idx].max_sam_line_length;
-		}
-	}
+	SAMResults sam_results_str = references_data_str->sam_results_str;
+	int max_sam_line_length = sam_results_str.max_sam_line_length;
 
-	MSA *msa_str = thread_str->msa_str;
+	MSA *msa_str = bmm_thread_str->msa_str;
 	char **msa_sequences = msa_str->sequences;
 	int msa_sequence_length = msa_str->sequence_length;
 	int num_msa_sequences = msa_str->num_sequences;
 
-	char *row_buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *readname = (char *)malloc(FASTA_MAXLINE * sizeof(char));
+	MismatchData *mismatch_data_str = bmm_thread_str->mismatch_data_str;
 
-	char *first_copy = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *second_copy = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *first_sam_line_cigar = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *second_sam_line_cigar = (char *)malloc(FASTA_MAXLINE * sizeof(char));
+	char *readname = (char *)malloc(max_sam_line_length * sizeof(char));
+
+	char *first_copy = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *second_copy = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *first_sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
+	char *second_sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
 	char *first_sam_fields[11];
 	char *second_sam_fields[11];
 
@@ -71,13 +60,14 @@ void *write_mismatch_matrix_paired(void *ptr)
 
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx = sam_line_idx + 2)
 	{
+		int row_idx = bmm_thread_str->read_strain_offset + ((sam_line_idx - sam_partition_start) / 2);
 		int best_reference_mismatch = INT32_MAX;
 		int best_alignment_size = -1;
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
-			strcpy(first_copy, sam_results_strs[ref_idx].sam_results[sam_line_idx]);
-			strcpy(second_copy, sam_results_strs[ref_idx].sam_results[sam_line_idx + 1]);
+			strcpy(first_copy, sam_results_str.sam_results[ref_idx][sam_line_idx]);
+			strcpy(second_copy, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
 
 			char *first_token = strtok(first_copy, "\t");
 			j = 0;
@@ -165,7 +155,7 @@ void *write_mismatch_matrix_paired(void *ptr)
 				{
 					for (k = 0; k < first_cigar_vals[j]; k++)
 					{
-						int first_pos_in_msa = reference_indexes[ref_idx][first_sequence_start_pos + first_reference_offset];
+						int first_pos_in_msa = references_data_str->reference_indexes[ref_idx][first_sequence_start_pos + first_reference_offset];
 
 						if (first_cigar_chars[j] == 'M')
 						{
@@ -197,7 +187,7 @@ void *write_mismatch_matrix_paired(void *ptr)
 				{
 					for (k = 0; k < second_cigar_vals[j]; k++)
 					{
-						int second_pos_in_msa = reference_indexes[ref_idx][second_sequence_start_pos + second_reference_offset];
+						int second_pos_in_msa = references_data_str->reference_indexes[ref_idx][second_sequence_start_pos + second_reference_offset];
 
 						if (second_cigar_chars[j] == 'M')
 						{
@@ -287,10 +277,7 @@ void *write_mismatch_matrix_paired(void *ptr)
 					current_mismatch_matrix_row[msa_seq_idx] = nm;
 				}
 
-				// Compare this reference against the running best using its
-				// mismatch against ITS OWN strain in the MSA -- the row that
-				// wins becomes the row actually reported for this read.
-				int current_reference_mismatch = current_mismatch_matrix_row[reference_data_strs[ref_idx].reference_sequence_index];
+				int current_reference_mismatch = current_mismatch_matrix_row[references_data_str->reference_sequence_msa_indexes[ref_idx]];
 				if (current_reference_mismatch < best_reference_mismatch)
 				{
 					best_reference_mismatch = current_reference_mismatch;
@@ -303,23 +290,17 @@ void *write_mismatch_matrix_paired(void *ptr)
 			}
 		}
 
-		if (best_alignment_size != -1)
+		strcpy(mismatch_data_str->read_names[row_idx], readname);
+		mismatch_data_str->block_sizes[row_idx] = best_alignment_size;
+		if (best_alignment_size != -1) 
 		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
 			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
+				mismatch_data_str->mismatch_matrix[row_idx][msa_seq_idx] = best_mismatch_matrix_row[msa_seq_idx];
 			}
-
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
-			pthread_mutex_unlock(thread_str->write_mutex);
 		}
 	}
 
-	free(row_buffer);
 	free(readname);
 	free(first_copy);
 	free(second_copy);
@@ -339,44 +320,35 @@ void *write_mismatch_matrix_paired(void *ptr)
 	free(merged_bases);
 	free(current_mismatch_matrix_row);
 	free(best_mismatch_matrix_row);
+
 	return NULL;
 }
 
-void *write_mismatch_matrix_single(void *ptr)
+void *build_mismatch_matrix_single(void *ptr)
 {
 	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
-	MismatchMatrixThreadStruct *thread_str = (MismatchMatrixThreadStruct *)ptr;
-	int sam_partition_start = thread_str->sam_partition_start;
-	int sam_partition_end = thread_str->sam_partition_end;
-	int num_references = thread_str->num_references;
+	BuildMismatchMatrixThread *bmm_thread_str = (BuildMismatchMatrixThread *)ptr;
+	int sam_partition_start = bmm_thread_str->sam_partition_start;
+	int sam_partition_end = bmm_thread_str->sam_partition_end;
 
-	ReferenceData *reference_data_strs = thread_str->reference_data_strs;
-	SAMResults sam_results_strs[num_references];
-	int *reference_indexes[num_references];
+	ReferencesData *references_data_str = bmm_thread_str->references_data_str;
+	int num_references = references_data_str->num_references;
 
-	int num_sam_lines = reference_data_strs[0].sam_results_str.num_sam_lines;
-	int max_sam_line_length = reference_data_strs[0].sam_results_str.max_sam_line_length;
-	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
-	{
-		sam_results_strs[ref_idx] = reference_data_strs[ref_idx].sam_results_str;
-		reference_indexes[ref_idx] = reference_data_strs[ref_idx].reference_index;
-		assert(num_sam_lines == sam_results_strs[ref_idx].num_sam_lines);
-		if (sam_results_strs[ref_idx].max_sam_line_length > max_sam_line_length)
-		{
-			max_sam_line_length = sam_results_strs[ref_idx].max_sam_line_length;
-		}
-	}
+	SAMResults sam_results_str = references_data_str->sam_results_str;
+	int max_sam_line_length = sam_results_str.max_sam_line_length;
 
-	MSA *msa_str = thread_str->msa_str;
+	MSA *msa_str = bmm_thread_str->msa_str;
 	char **msa_sequences = msa_str->sequences;
 	int msa_sequence_length = msa_str->sequence_length;
 	int num_msa_sequences = msa_str->num_sequences;
 
-	char *row_buffer = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *readname = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *copy = (char *)malloc(FASTA_MAXLINE * sizeof(char));
-	char *sam_line_cigar = (char *)malloc(FASTA_MAXLINE * sizeof(char));
+	MismatchData *mismatch_data_str = bmm_thread_str->mismatch_data_str;
+
+	char *readname = (char *)malloc(max_sam_line_length * sizeof(char));
+
+	char *copy = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
 	char *sam_fields[11];
 
 	char *sequence = (char *)malloc(MAX_READ_LENGTH * sizeof(char));
@@ -391,14 +363,16 @@ void *write_mismatch_matrix_single(void *ptr)
 
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx++)
 	{
+		int row_idx = bmm_thread_str->read_strain_offset + (sam_line_idx - sam_partition_start);
 		int best_reference_mismatch = INT32_MAX;
 		int best_alignment_size = -1;
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
-			strcpy(copy, sam_results_strs[ref_idx].sam_results[sam_line_idx]);
+			strcpy(copy, sam_results_str.sam_results[ref_idx][sam_line_idx]);
 
 			char *token = strtok(copy, "\t");
+
 			j = 0;
 			while (token != NULL && j < 11)
 			{
@@ -449,7 +423,7 @@ void *write_mismatch_matrix_single(void *ptr)
 				{
 					for (k = 0; k < cigar_vals[j]; k++)
 					{
-						int pos_in_msa = reference_indexes[ref_idx][sequence_start_pos + reference_offset];
+						int pos_in_msa = references_data_str->reference_indexes[ref_idx][sequence_start_pos + reference_offset];
 
 						if (cigar_chars[j] == 'M')
 						{
@@ -492,7 +466,7 @@ void *write_mismatch_matrix_single(void *ptr)
 					current_mismatch_matrix_row[msa_seq_idx] = nm;
 				}
 
-				int current_reference_mismatch = current_mismatch_matrix_row[reference_data_strs[ref_idx].reference_sequence_index];
+				int current_reference_mismatch = current_mismatch_matrix_row[references_data_str->reference_sequence_msa_indexes[ref_idx]];
 				if (current_reference_mismatch < best_reference_mismatch)
 				{
 					best_reference_mismatch = current_reference_mismatch;
@@ -505,23 +479,17 @@ void *write_mismatch_matrix_single(void *ptr)
 			}
 		}
 
+		strcpy(mismatch_data_str->read_names[row_idx], readname);
+		mismatch_data_str->block_sizes[row_idx] = best_alignment_size;
 		if (best_alignment_size != -1)
 		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
 			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
+				mismatch_data_str->mismatch_matrix[row_idx][msa_seq_idx] = best_mismatch_matrix_row[msa_seq_idx];
 			}
-
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
-			pthread_mutex_unlock(thread_str->write_mutex);
 		}
 	}
 
-	free(row_buffer);
 	free(readname);
 	free(copy);
 	free(sam_line_cigar);
@@ -532,103 +500,104 @@ void *write_mismatch_matrix_single(void *ptr)
 	free(bases);
 	free(current_mismatch_matrix_row);
 	free(best_mismatch_matrix_row);
+
 	return NULL;
 }
 
-void write_mismatch_matrix(char *outfile_path, ReferenceData *reference_data_strs, int num_references, MSA *msa_str, int paired, int num_threads)
+MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa_str, int paired, int num_threads)
 {
 	int i, ref_idx, msa_seq_idx;
 
-	FILE *outfile = fopen(outfile_path, "w");
-	if (outfile == NULL)
-	{
-		fprintf(stderr, "Error: could not open '%s' for writing the mismatch matrix\n", outfile_path);
-		exit(1);
-	}
-
-	fprintf(outfile, "qName\tblockSizes");
-	for (i = 0; i < msa_str->num_sequences; i++)
-	{
-		fprintf(outfile, "\t%s", msa_str->sequence_names[i]);
-	}
-	fprintf(outfile, "\n");
-
+	int num_references = references_data_str->num_references;
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
-		reference_data_strs[ref_idx].reference_sequence_index = -1;
-		for (msa_seq_idx = 0; msa_seq_idx < msa_str->num_sequences; msa_seq_idx++)
+		references_data_str->reference_sequence_msa_indexes[ref_idx] = -1;
+		msa_seq_idx = 0;
+		while (msa_seq_idx < msa_str->num_sequences && references_data_str->reference_sequence_msa_indexes[ref_idx] == -1)
 		{
-			if (strcmp(reference_data_strs[ref_idx].reference_name, msa_str->sequence_names[msa_seq_idx]) == 0)
+			if (strcmp(references_data_str->reference_names[ref_idx], msa_str->sequence_names[msa_seq_idx]) == 0)
 			{
-				reference_data_strs[ref_idx].reference_sequence_index = msa_seq_idx;
-				break;
+				references_data_str->reference_sequence_msa_indexes[ref_idx] = msa_seq_idx;
 			}
+			msa_seq_idx++;
 		}
-		if (reference_data_strs[ref_idx].reference_sequence_index == -1)
+
+		if (references_data_str->reference_sequence_msa_indexes[ref_idx] == -1)
 		{
-			fprintf(stderr, "Error: reference '%s' was not found in the MSA strain names.\n", reference_data_strs[ref_idx].reference_name);
+			fprintf(stderr, "Error: reference sequence '%s' was not found in the MSA.\n", references_data_str->reference_names[ref_idx]);
 			exit(1);
 		}
 	}
 
-	int num_sam_lines = reference_data_strs[0].sam_results_str.num_sam_lines;
-	int num_read_strains;
-	int lines_per_read_strain;
+	int num_sam_lines = references_data_str->sam_results_str.num_sam_lines;
+	int max_sam_line_length = references_data_str->sam_results_str.max_sam_line_length;
+
+	int num_reads;
+	int lines_per_read;
 	void *(*function)(void *);
 	if (paired)
 	{
-		num_read_strains = num_sam_lines / 2;
-		lines_per_read_strain = 2;
-		function = write_mismatch_matrix_paired;
+		num_reads = num_sam_lines / 2;
+		lines_per_read = 2;
+		function = build_mismatch_matrix_paired;
 	}
 	else
 	{
-		num_read_strains = num_sam_lines;
-		lines_per_read_strain = 1;
-		function = write_mismatch_matrix_single;
+		num_reads = num_sam_lines;
+		lines_per_read = 1;
+		function = build_mismatch_matrix_single;
 	}
 
-	pthread_mutex_t write_mutex;
-	pthread_mutex_init(&write_mutex, NULL);
+	MismatchData mismatch_data;
+	mismatch_data.num_reads = num_reads;
+	mismatch_data.num_msa_sequences = msa_str->num_sequences;
+	mismatch_data.msa_sequence_names = msa_str->sequence_names;
 
-	pthread_t *threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
-	MismatchMatrixThreadStruct *thread_strs = (MismatchMatrixThreadStruct *)malloc(num_threads * sizeof(MismatchMatrixThreadStruct));
+	mismatch_data.block_sizes = (int *)malloc(num_reads * sizeof(int));
 
-	int read_strains_per_thread = num_read_strains / num_threads;
-	int remainder = num_read_strains % num_threads;
+	mismatch_data.read_names = (char **)malloc(num_reads * sizeof(char *));
+	mismatch_data.mismatch_matrix = (int **)malloc(num_reads * sizeof(int *));
+	for (i = 0; i < num_reads; i++)
+	{
+		mismatch_data.read_names[i] = (char *)malloc(max_sam_line_length * sizeof(char));
+		mismatch_data.mismatch_matrix[i] = (int *)malloc(msa_str->num_sequences * sizeof(int));
+	}
 
-	int read_strain_cursor = 0;
+	pthread_t *pthreads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
+	BuildMismatchMatrixThread *bmm_thread_strs = (BuildMismatchMatrixThread *)malloc(num_threads * sizeof(BuildMismatchMatrixThread));
+
+	int reads_per_thread = num_reads / num_threads;
+	int remainder = num_reads % num_threads;
+
+	int read_cursor = 0;
 	for (i = 0; i < num_threads; i++)
 	{
-		int this_thread_read_strains = read_strains_per_thread;
+		int this_thread_num_reads = reads_per_thread;
 		if (i < remainder)
 		{
-			this_thread_read_strains++;
+			this_thread_num_reads++;
 		}
 
-		int start_read_strain = read_strain_cursor;
-		int end_read_strain = read_strain_cursor + this_thread_read_strains;
-		read_strain_cursor = end_read_strain;
+		bmm_thread_strs[i].thread_index = i;
+		bmm_thread_strs[i].sam_partition_start = read_cursor * lines_per_read;
+		bmm_thread_strs[i].sam_partition_end = (read_cursor + this_thread_num_reads) * lines_per_read;
+		bmm_thread_strs[i].read_strain_offset = read_cursor;
+		bmm_thread_strs[i].references_data_str = references_data_str;
+		bmm_thread_strs[i].msa_str = msa_str;
+		bmm_thread_strs[i].mismatch_data_str = &mismatch_data;
 
-		thread_strs[i].thread_index = i;
-		thread_strs[i].sam_partition_start = start_read_strain * lines_per_read_strain;
-		thread_strs[i].sam_partition_end = end_read_strain * lines_per_read_strain;
-		thread_strs[i].num_references = num_references;
-		thread_strs[i].reference_data_strs = reference_data_strs;
-		thread_strs[i].msa_str = msa_str;
-		thread_strs[i].outfile = outfile;
-		thread_strs[i].write_mutex = &write_mutex;
+		read_cursor += this_thread_num_reads;
 
-		pthread_create(&threads[i], NULL, function, &thread_strs[i]);
+		pthread_create(&pthreads[i], NULL, function, &bmm_thread_strs[i]);
 	}
 
 	for (i = 0; i < num_threads; i++)
 	{
-		pthread_join(threads[i], NULL);
+		pthread_join(pthreads[i], NULL);
 	}
 
-	pthread_mutex_destroy(&write_mutex);
-	fclose(outfile);
-	free(threads);
-	free(thread_strs);
+	free(pthreads);
+	free(bmm_thread_strs);
+
+	return mismatch_data;
 }

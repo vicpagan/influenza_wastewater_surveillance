@@ -136,36 +136,29 @@ MSA read_in_msa(char *msa_filepath)
 	gzFile msa_file;
 	if ((msa_file = gzopen(msa_filepath, "r")) == (gzFile)NULL)
 	{
-		fprintf(stderr, "MSA File could not be opened.\n");
-
-		msa_str.num_sequences = -1;
-		msa_str.sequence_length = -1;
-		msa_str.max_sequence_name_length = -1;
-
-		msa_str.sequence_names = NULL;
-		msa_str.sequences = NULL;
+		fprintf(stderr, "MSA File '%s' could not be opened.\n", msa_filepath);
+		exit(1);
 	}
-	else
+
+	// parse and store MSA metadata info
+	parse_msa_info(msa_file, &msa_str);
+
+	// allocate storage for sequences and their names
+	msa_str.sequence_names = malloc(msa_str.num_sequences * sizeof(char *));
+	msa_str.sequences = malloc(msa_str.num_sequences * sizeof(char *));
+	for (int i = 0; i < msa_str.num_sequences; i++)
 	{
-		// parse and store MSA metadata info
-		parse_msa_info(msa_file, &msa_str);
-
-		// allocate storage for sequences and their names
-		msa_str.sequence_names = malloc(msa_str.num_sequences * sizeof(char *));
-		msa_str.sequences = malloc(msa_str.num_sequences * sizeof(char *));
-		for (int i = 0; i < msa_str.num_sequences; i++)
-		{
-			msa_str.sequence_names[i] = calloc((msa_str.max_sequence_name_length + 1), sizeof(char));
-			msa_str.sequences[i] = calloc((msa_str.sequence_length + 1), sizeof(char));
-		}
-
-		gzrewind(msa_file);
-
-		// parse and store MSA sequences and their names
-		read_msa_sequences(msa_file, &msa_str);
-
-		gzclose(msa_file);
+		msa_str.sequence_names[i] = calloc((msa_str.max_sequence_name_length + 1), sizeof(char));
+		msa_str.sequences[i] = calloc((msa_str.sequence_length + 1), sizeof(char));
 	}
+
+	gzrewind(msa_file);
+
+	// parse and store MSA sequences and their names
+	read_msa_sequences(msa_file, &msa_str);
+
+	gzclose(msa_file);
+
     return msa_str;
 }
 
@@ -218,7 +211,7 @@ void remove_identical_sequences(MSA *msa_str)
 	int num_sequences_removed = 0;
 	
 	// compare every sequence to each other and mark rightmost duplicates for removal
-	int i, j, k, nm;
+	int i, j, k, num_matches;
 	for (i = 0; i < num_sequences; i++)
 	{
 		if (sequences_to_remove[i] == 0)
@@ -227,16 +220,16 @@ void remove_identical_sequences(MSA *msa_str)
 			{
 				if (sequences_to_remove[j] == 0)
 				{
-					nm = 0;
+					num_matches = 0;
 					for (k = 0; k < sequence_length; k++)
 					{
 						if (msa_str->sequences[i][k] != msa_str->sequences[j][k])
 						{
-							nm++;
+							num_matches++;
 						}
 					}
 
-					if (nm == 0)
+					if (num_matches > 0)
 					{
 						printf("Removing sequence %d\n", j);
 						sequences_to_remove[j] = 1;

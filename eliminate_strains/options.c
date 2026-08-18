@@ -70,7 +70,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-x, --max [decimal]			Maximum strains remaining for EM algorithm [default: 10000]\n\
 	-b, --print-allele-counts [FILE]	Print allele counts to file\n\
 	-t, --cores [decimal]			Number of cores [default: 1]\n\
-	-n, --no-read-sam			Don't thread, don't read in sam file to memory\n\
+	-n, --no-read-sam			Don't read in sam file to memory\n\
 	-r, --print-deletions [FILE]		Print sites with deletions\n\
 	-j, --threshold-for-deleted-sites	Threshold to print deleted sites [default: 0.001]\n\
 	-B, --bowtie2-alignment_dir [REQUIRED,DIR]		Bowtie2 reference\n\

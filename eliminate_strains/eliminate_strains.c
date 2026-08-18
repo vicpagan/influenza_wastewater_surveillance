@@ -14,7 +14,7 @@
 #include "file_utils.h"
 #include "align_reference.h"
 #include "calculate_allele_freq.h"
-#include "write_mismatch_matrix.h"
+#include "build_mismatch_matrix.h"
 
 // TODO: reimplement with a new variant-sites-like file format for problematic sites
 // ProblematicSites *read_in_problematic_sites(char **problematic_sites_filepaths, int num_refs){
@@ -89,9 +89,10 @@ int main(int argc, char **argv)
 		clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 	}
 
-	ReferenceData *reference_data_strs = (ReferenceData *)malloc(opt.num_references * sizeof(ReferenceData));
+	ReferencesData references_data_str = align_references(msa_reference_filepaths, bowtie2_reference_filepaths, opt.num_references);
+	references_data_str.reference_names = (char **)malloc(opt.num_references * sizeof(char *));
 
-	align_all_references(reference_data_strs, opt.num_references, msa_reference_filepaths, bowtie2_reference_filepaths);
+	char **sam_filepaths = (char **)malloc(opt.num_references * sizeof(char *));
 
 	int ref_idx;
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
@@ -99,10 +100,10 @@ int main(int argc, char **argv)
 		char sam_filename[1000];
 		sprintf(sam_filename, "%s.%d", opt.sam_filepath, ref_idx);
 
-		char *sam_path = get_filepath_in_working_dir(sam_filename, opt.working_dir);
+		sam_filepaths[ref_idx] = get_filepath_in_working_dir(sam_filename, opt.working_dir);
 
-		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
-		int invoke_cleaning = calculate_error_rates(sam_path, opt.end_region_length, opt.end_region_error_mult);
+		perform_bowtie_alignment_xeq(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_filepaths[ref_idx], opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
+		int invoke_cleaning = calculate_error_rates(sam_filepaths[ref_idx], opt.end_region_length, opt.end_region_error_mult);
 		if (invoke_cleaning == 1 && opt.clean_reads == 0)
 		{
 			// FIXME: As of now, this changes where the opt.xxx_filepath points to once clean_reads() is called. 
@@ -110,23 +111,26 @@ int main(int argc, char **argv)
 			printf("Error rates of reads are too high! Cleaning reads...\n");
 			clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		}
-		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_path, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
+		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_filepaths[ref_idx], opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
 
-		printf("Reading in SAM results for reference %d...\n", ref_idx);
-		reference_data_strs[ref_idx].sam_results_str = read_in_sam_results(sam_path);
-		
-		reference_data_strs[ref_idx].reference_name = read_fastx_header_name(msa_reference_filepaths[ref_idx]);
-
-		free(sam_path);
+		references_data_str.reference_names[ref_idx] = read_fastx_header_name(msa_reference_filepaths[ref_idx]);
 	}
+
+	printf("Reading in SAM results...\n");
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	references_data_str.sam_results_str = read_in_sam_results(sam_filepaths, opt.num_references);
+	clock_gettime(CLOCK_MONOTONIC, &tend);
+	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	printf("Number of reads in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
+	printf("SAM max read length: %d\n", references_data_str.sam_results_str.max_sam_line_length);
 
 	printf("Reading in MSA...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
 	MSA msa_str = read_in_msa(opt.msa_filepath);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Number of strains: %d\n", msa_str.num_sequences);
-	printf("MSA length: %d\n", msa_str.sequence_length);
+	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
+	printf("MSA sequence length: %d\n", msa_str.sequence_length);
 
 	if (opt.remove_identical_sequences == 1)
 	{
@@ -147,14 +151,7 @@ int main(int argc, char **argv)
 	int output_deletions = (opt.print_deletions_filepath[0] != '\0');
 
 	printf("Calculating allele frequencies...\n");
-	if (opt.paired == 1)
-	{
-		calculate_allele_freq_paired(allele_frequency, &msa_str, opt.freq, tstart, tend, opt.coverage, opt.min_strains, opt.max_strains, output_allele_counts, opt.print_counts_filepath, output_deletions, opt.print_deletions_filepath, opt.deletion_threshold, reference_data_strs, opt.num_references);
-	}
-	else
-	{
-		calculate_allele_freq_single(allele_frequency, &msa_str, opt.freq, tstart, tend, opt.coverage, opt.min_strains, opt.max_strains, output_allele_counts, opt.print_counts_filepath, output_deletions, opt.print_deletions_filepath, opt.deletion_threshold, reference_data_strs, opt.num_references);
-	}
+	calculate_allele_freq(allele_frequency, &msa_str, opt.freq, tstart, tend, opt.coverage, opt.min_strains, opt.max_strains, output_allele_counts, opt.print_counts_filepath, output_deletions, opt.print_deletions_filepath, opt.deletion_threshold, &references_data_str, opt.paired);
 
 	for (i = 0; i < msa_str.sequence_length; i++)
 	{
@@ -169,23 +166,30 @@ int main(int argc, char **argv)
 	}
 
 	// NOTE: opt.no_read_bam has no effect currently
-	printf("Creating mismatch matrix...\n");
+	printf("Building mismatch matrix...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	write_mismatch_matrix(opt.output_filepath, reference_data_strs, opt.num_references, &msa_str, opt.paired, opt.num_threads);
+	build_mismatch_matrix(&references_data_str, &msa_str, opt.paired, opt.num_threads);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
-		for (i = 0; i < reference_data_strs[ref_idx].sam_results_str.num_sam_lines; i++)
+		for (i = 0; i < references_data_str.sam_results_str.num_sam_lines; i++)
 		{
-			free(reference_data_strs[ref_idx].sam_results_str.sam_results[i]);
+			free(references_data_str.sam_results_str.sam_results[ref_idx][i]);
 		}
-		free(reference_data_strs[ref_idx].sam_results_str.sam_results);
-		free(reference_data_strs[ref_idx].reference_index);
-		free(reference_data_strs[ref_idx].reference_name);
+		free(references_data_str.sam_results_str.sam_results[ref_idx]);
 	}
-	free(reference_data_strs);
+	free(references_data_str.sam_results_str.sam_results);
+
+	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
+	{
+		free(references_data_str.reference_indexes[ref_idx]);
+		free(references_data_str.reference_names[ref_idx]);
+	}
+	free(references_data_str.reference_indexes);
+	free(references_data_str.reference_names);
+	free(references_data_str.reference_sequence_msa_indexes);
 
 	for (i = 0; i < msa_str.num_sequences; i++)
 	{
@@ -202,18 +206,6 @@ int main(int argc, char **argv)
 	}
 	free(msa_reference_filepaths);
 	free(bowtie2_reference_filepaths);
-
-	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-	if (opt.llr == 1)
-	{
-		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -l -r %s -b %s", opt.output_filepath, opt.freq, opt.em_error, opt.msa_filepath, opt.print_counts_filepath);
-	}
-	else
-	{
-		sprintf(buffer, "Rscript ../EM_C_LLR.R -i %s -f %lf -e %lf -r %s -b %s", opt.output_filepath, opt.freq, opt.em_error, opt.msa_filepath, opt.print_counts_filepath);
-	}
-	system(buffer);
-	free(buffer);
 
 	return 0;
 }
