@@ -33,10 +33,10 @@ void *build_mismatch_matrix_paired(void *ptr)
 
 	MismatchData *mismatch_data_str = bmm_thread_str->mismatch_data_str;
 
-	char *readname = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *readname = (char *)malloc((max_sam_line_length + 1) * sizeof(char));
 
-	char *first_copy = (char *)malloc(max_sam_line_length * sizeof(char));
-	char *second_copy = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *first_copy = (char *)malloc((max_sam_line_length + 1) * sizeof(char));
+	char *second_copy = (char *)malloc((max_sam_line_length + 1) * sizeof(char));
 	char *first_sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
 	char *second_sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
 	char *first_sam_fields[11];
@@ -351,9 +351,9 @@ void *build_mismatch_matrix_single(void *ptr)
 
 	MismatchData *mismatch_data_str = bmm_thread_str->mismatch_data_str;
 
-	char *readname = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *readname = (char *)malloc((max_sam_line_length + 1) * sizeof(char));
 
-	char *copy = (char *)malloc(max_sam_line_length * sizeof(char));
+	char *copy = (char *)malloc((max_sam_line_length + 1) * sizeof(char));
 	char *sam_line_cigar = (char *)malloc(MAX_CIGAR * sizeof(char));
 	char *sam_fields[11];
 

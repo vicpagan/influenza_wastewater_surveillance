@@ -14,8 +14,8 @@ void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thr
 	int num_sam_lines = references_data_str->sam_results_str.num_sam_lines;
 	int max_sam_line_length = references_data_str->sam_results_str.max_sam_line_length;
 
-	char first_copy[max_sam_line_length];
-	char second_copy[max_sam_line_length];
+	char first_copy[max_sam_line_length + 1];
+	char second_copy[max_sam_line_length + 1];
 	char first_sam_line_cigar[MAX_CIGAR];
 	char second_sam_line_cigar[MAX_CIGAR];
 	char *first_sam_fields[11];
@@ -512,10 +512,10 @@ void calculate_allele_freq_single(double **allele, MSA *msa_str, double freq_thr
 	int num_sam_lines = references_data_str->sam_results_str.num_sam_lines;
 	int max_sam_line_length = references_data_str->sam_results_str.max_sam_line_length;
 
-	char copy[max_sam_line_length];
+	char copy[max_sam_line_length + 1];
 	char sam_line_cigar[MAX_CIGAR];
 	char *sam_fields[11];
-	
+
 	char *sequence = (char *)calloc(MAX_READ_LENGTH, sizeof(char));
 	int cigar_vals[MAX_CIGAR] = {0};
 	char cigar_chars[MAX_CIGAR] = {'\0'};
