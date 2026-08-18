@@ -515,6 +515,7 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	int i, ref_idx, msa_seq_idx;
 
 	int num_references = references_data_str->num_references;
+	references_data_str->reference_sequence_msa_indexes = (int *)malloc(num_references * sizeof(int));
 	printf("DEBUG: reference_sequence_msa_indexes = %p\n", (void *)references_data_str->reference_sequence_msa_indexes);
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
