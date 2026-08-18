@@ -548,6 +548,8 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 		function = build_mismatch_matrix_single;
 	}
 
+	printf("DEBUG: num_sam_lines = %d, num_reads = %d\n", num_sam_lines, num_reads);
+
 	MismatchData mismatch_data;
 	mismatch_data.num_reads = num_reads;
 	mismatch_data.num_msa_sequences = msa_str->num_sequences;
