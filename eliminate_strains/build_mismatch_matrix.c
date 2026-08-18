@@ -65,7 +65,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 		int best_reference_mismatch = INT32_MAX;
 		int best_alignment_size = -1;
 
-		printf("DEBUG: Thread %d working on read row %d\n", thread_id, row_idx);
+		// printf("DEBUG: Thread %d working on read row %d\n", thread_id, row_idx);
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
