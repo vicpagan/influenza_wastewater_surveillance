@@ -6,7 +6,7 @@ CC = gcc
 # -O3 is for compiler optimizations
 # -g adds debugging information to the executable file
 CFLAGS = -Wall -O3
-DBGCFLAGS = -g
+DBGCFLAGS = -Wall -O0 -g -fsanitize=address
 
 # -lz links the gz library, -lpthread links pthreads
 LIBS = -lz -lpthread
