@@ -18,6 +18,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 	BuildMismatchMatrixThread *bmm_thread_str = (BuildMismatchMatrixThread *)ptr;
 	int sam_partition_start = bmm_thread_str->sam_partition_start;
 	int sam_partition_end = bmm_thread_str->sam_partition_end;
+	int thread_id = bmm_thread_str->thread_index;
 
 	ReferencesData *references_data_str = bmm_thread_str->references_data_str;
 	int num_references = references_data_str->num_references;
@@ -64,8 +65,12 @@ void *build_mismatch_matrix_paired(void *ptr)
 		int best_reference_mismatch = INT32_MAX;
 		int best_alignment_size = -1;
 
+		printf("Thread %d is working on row %d\n", thread_id, row_idx);
+
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
+			printf("Thread %d is working on reference %d\n", thread_id, ref_idx);
+
 			strcpy(first_copy, sam_results_str.sam_results[ref_idx][sam_line_idx]);
 			strcpy(second_copy, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
 
@@ -280,6 +285,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 				int current_reference_mismatch = current_mismatch_matrix_row[references_data_str->reference_sequence_msa_indexes[ref_idx]];
 				if (current_reference_mismatch < best_reference_mismatch)
 				{
+					printf("Thread %d is replacing the best reference stuff. Current mismatch = %d      best mismatch = %d", thread_id, current_reference_mismatch, best_reference_mismatch);
 					best_reference_mismatch = current_reference_mismatch;
 					best_alignment_size = current_alignment_size;
 					for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
@@ -574,7 +580,7 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	int read_cursor = 0;
 	for (i = 0; i < num_threads; i++)
 	{
-		printf("Looping for thread number %d", i);
+		printf("Looping for thread number %d\n", i);
 		int this_thread_num_reads = reads_per_thread;
 		if (i < remainder)
 		{
