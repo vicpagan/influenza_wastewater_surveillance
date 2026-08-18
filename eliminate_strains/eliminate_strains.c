@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	opt.remove_identical_sequences = 0;
 	opt.paired = 0;
 	opt.em_error = 0.005;
-	opt.coverage = 50;
+	opt.coverage = 50; // FIXME: Test lowering this number because the code says all of the bases are not covered which is weird
 	opt.clean_reads = 0;
 	opt.fasta_format = 0;
 	opt.freq = 0.01;

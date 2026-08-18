@@ -347,6 +347,8 @@ void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thr
 		}
 	}
 
+	printf("DEBUG: Num covered sites = %d", num_covered_sites);
+
 	int *covered_sites = (int *)malloc(num_covered_sites * sizeof(int));
 	for (i = 0; i < num_covered_sites; i++)
 	{
