@@ -72,22 +72,24 @@ void *build_mismatch_matrix_paired(void *ptr)
 			strcpy(first_copy, sam_results_str.sam_results[ref_idx][sam_line_idx]);
 			strcpy(second_copy, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
 
-			char *first_token = strtok(first_copy, "\t");
+			char *first_local_save = NULL;
+			char *first_token = strtok_r(first_copy, "\t", &first_local_save);
 			j = 0;
 			while (first_token != NULL && j < 11)
 			{
 				first_sam_fields[j] = first_token;
 				j++;
-				first_token = strtok(NULL, "\t");
+				first_token = strtok_r(NULL, "\t", &first_local_save);
 			}
 
-			char *second_token = strtok(second_copy, "\t");
+			char *second_local_save = NULL;
+			char *second_token = strtok_r(second_copy, "\t", &second_local_save);
 			j = 0;
 			while (second_token != NULL && j < 11)
 			{
 				second_sam_fields[j] = second_token;
 				j++;
-				second_token = strtok(NULL, "\t");
+				second_token = strtok_r(NULL, "\t", &second_local_save);
 			}
 
 			if (ref_idx == 0)
@@ -383,14 +385,15 @@ void *build_mismatch_matrix_single(void *ptr)
 		{
 			strcpy(copy, sam_results_str.sam_results[ref_idx][sam_line_idx]);
 
-			char *token = strtok(copy, "\t");
+			char *local_save = NULL;
+			char *token = strtok_r(copy, "\t", &local_save);
 
 			j = 0;
 			while (token != NULL && j < 11)
 			{
 				sam_fields[j] = token;
 				j++;
-				token = strtok(NULL, "\t");
+				token = strtok_r(NULL, "\t", &local_save);
 			}
 
 			if (ref_idx == 0)
