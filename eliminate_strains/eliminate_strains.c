@@ -124,6 +124,7 @@ int main(int argc, char **argv)
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Number of reads in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
 	printf("SAM max read length: %d\n", references_data_str.sam_results_str.max_sam_line_length);
+	free(sam_filepaths);
 
 	printf("Reading in MSA...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
@@ -207,6 +208,15 @@ int main(int argc, char **argv)
 	}
 	free(msa_reference_filepaths);
 	free(bowtie2_reference_filepaths);
+
+	for (i = 0; i < mismatch_data_str.num_reads; i++)
+	{
+		free(mismatch_data_str.read_names[i]);
+		free(mismatch_data_str.mismatch_matrix[i]);
+	}
+	free(mismatch_data_str.read_names);
+	free(mismatch_data_str.mismatch_matrix);
+	free(mismatch_data_str.block_sizes);
 
 	return 0;
 }
