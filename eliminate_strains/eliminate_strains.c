@@ -91,6 +91,7 @@ int main(int argc, char **argv)
 
 	ReferencesData references_data_str = align_references(msa_reference_filepaths, bowtie2_reference_filepaths, opt.num_references);
 	references_data_str.reference_names = (char **)malloc(opt.num_references * sizeof(char *));
+	references_data_str.num_references = opt.num_references;
 
 	char **sam_filepaths = (char **)malloc(opt.num_references * sizeof(char *));
 
