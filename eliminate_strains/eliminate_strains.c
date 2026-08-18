@@ -124,6 +124,11 @@ int main(int argc, char **argv)
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Number of reads in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
 	printf("SAM max read length: %d\n", references_data_str.sam_results_str.max_sam_line_length);
+	
+	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
+	{
+		free(sam_filepaths[ref_idx]);
+	}
 	free(sam_filepaths);
 
 	printf("Reading in MSA...\n");
@@ -209,6 +214,7 @@ int main(int argc, char **argv)
 	free(msa_reference_filepaths);
 	free(bowtie2_reference_filepaths);
 
+	// NOTE: To be done after the proportion EM calculation stuff, everything above can be freed after mismatch matrix is built
 	for (i = 0; i < mismatch_data_str.num_reads; i++)
 	{
 		free(mismatch_data_str.read_names[i]);
