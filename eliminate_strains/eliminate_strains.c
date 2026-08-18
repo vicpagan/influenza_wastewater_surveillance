@@ -173,20 +173,6 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
-	printf("DEBUG: mismatch_data.num_reads = %d\n", mismatch_data_str.num_reads);
-	int mapped_count = 0;
-	for (i = 0; i < mismatch_data_str.num_reads; i++)
-	{
-		if (mismatch_data_str.block_sizes[i] != -1) mapped_count++;
-	}
-	printf("DEBUG: %d of %d reads actually mapped (block_size != -1)\n", mapped_count, mismatch_data_str.num_reads);
-
-	for (i = 0; i < 5 && i < mismatch_data_str.num_reads; i++)
-	{
-		printf("DEBUG row %d: name=%s block_size=%d mismatch[0]=%d\n",
-			i, mismatch_data_str.read_names[i], mismatch_data_str.block_sizes[i], mismatch_data_str.mismatch_matrix[i][0]);
-	}
-
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
 		for (i = 0; i < references_data_str.sam_results_str.num_sam_lines; i++)
