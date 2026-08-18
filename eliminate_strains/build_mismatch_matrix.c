@@ -98,14 +98,16 @@ void *build_mismatch_matrix_paired(void *ptr)
 			int first_status = parse_sam_flags(atoi(first_sam_fields[1]));
 			if (first_status == 0 || first_status == 1)
 			{
-				int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
-
-				if (second_sam_fields[0] == NULL || second_sam_fields[3] == NULL)
+				if (first_sam_fields[3] == NULL)
 				{
-					fprintf(stderr, "DEBUG: malformed second_copy. ref_idx=%d sam_line_idx=%d raw='%s'\n",
-						ref_idx, sam_line_idx, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
+					fprintf(stderr, "DEBUG: ref_idx=%d sam_line_idx=%d raw='%s'\n", ref_idx, sam_line_idx, sam_results_str.sam_results[ref_idx][sam_line_idx]);
+				}
+				if (second_sam_fields[3] == NULL)
+				{
+					fprintf(stderr, "DEBUG: ref_idx=%d sam_line_idx=%d raw='%s'\n", ref_idx, sam_line_idx, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
 				}
 
+				int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
 				int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
 
 				strcpy(first_sam_line_cigar, first_sam_fields[5]);
