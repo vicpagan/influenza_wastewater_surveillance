@@ -568,7 +568,12 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	MismatchData mismatch_data;
 	mismatch_data.num_reads = num_reads;
 	mismatch_data.num_msa_sequences = msa_str->num_sequences;
-	mismatch_data.msa_sequence_names = msa_str->sequence_names;
+	
+	mismatch_data.msa_sequence_names = (char **)malloc(msa_str->num_sequences * sizeof(char *));
+	for (msa_seq_idx = 0; msa_seq_idx < msa_str->num_sequences; msa_seq_idx++)
+	{
+		mismatch_data.msa_sequence_names[msa_seq_idx] = strdup(msa_str->sequence_names[msa_seq_idx]);
+	}
 
 	mismatch_data.block_sizes = (int *)malloc(num_reads * sizeof(int));
 
