@@ -151,5 +151,12 @@ typedef struct BuildMismatchMatrixThread
 	MismatchData *mismatch_data_str;
 } BuildMismatchMatrixThread;
 
+typedef struct HashmapEntry
+{
+	char *mismatch_column;
+	char *msa_strain_names;
+	int msa_strain_names_length;
+} HashmapEntry;
+
 
 #endif /* _GLOBAL_ */

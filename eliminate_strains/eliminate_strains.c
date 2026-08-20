@@ -15,6 +15,7 @@
 #include "align_reference.h"
 #include "calculate_allele_freq.h"
 #include "build_mismatch_matrix.h"
+#include "calculate_proportions.h"
 
 // TODO: reimplement with a new variant-sites-like file format for problematic sites
 // ProblematicSites *read_in_problematic_sites(char **problematic_sites_filepaths, int num_refs){
@@ -213,6 +214,21 @@ int main(int argc, char **argv)
 	}
 	free(msa_reference_filepaths);
 	free(bowtie2_reference_filepaths);
+
+	// char* buffer = (char*)malloc(FASTA_MAXLINE*sizeof(char));
+	// memset(buffer,'\0',FASTA_MAXLINE);
+	// if (opt.llr==1)
+	// {
+	// 	sprintf(buffer,"Rscript EM_C_LLR.R -i %s -f %lf -e %lf -l -s -v %s -r %s -b %s",opt.outfile,opt.freq,opt.error,opt.variant,opt.fasta,opt.print_counts);
+	// }
+	// else
+	// {
+	// 	sprintf(buffer,"Rscript EM_C_LLR.R -i %s -f %lf -e %lf -s -v %s -r %s -b %s",opt.outfile,opt.freq,opt.error,opt.variant,opt.fasta,opt.print_counts);
+	// }
+	// system(buffer);
+	// free(buffer);
+
+	calculate_proportions(&mismatch_data_str, opt.output_filepath, opt.em_error, opt.freq, 1, 0, 1, opt.num_threads);
 
 	// NOTE: To be done after the proportion EM calculation stuff, everything above can be freed after mismatch matrix is built
 	for (i = 0; i < mismatch_data_str.num_reads; i++)

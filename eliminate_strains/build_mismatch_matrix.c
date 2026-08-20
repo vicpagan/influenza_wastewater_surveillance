@@ -616,5 +616,30 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	free(pthreads);
 	free(bmm_thread_strs);
 
+	// remove reads that did not align to any reference
+	int write_idx = 0;
+	for (int read_idx = 0; read_idx < num_reads; read_idx++)
+	{
+		if (mismatch_data.block_sizes[read_idx] != -1)
+		{
+			if (write_idx != read_idx)
+			{
+				mismatch_data.read_names[write_idx] = mismatch_data.read_names[read_idx];
+				mismatch_data.block_sizes[write_idx] = mismatch_data.block_sizes[read_idx];
+				mismatch_data.mismatch_matrix[write_idx] = mismatch_data.mismatch_matrix[read_idx];
+			}
+			write_idx++;
+		}
+		else
+		{
+			free(mismatch_data.read_names[read_idx]);
+			free(mismatch_data.mismatch_matrix[read_idx]);
+		}
+	}
+	mismatch_data.num_reads = write_idx;
+	mismatch_data.read_names = (char **)realloc(mismatch_data.read_names, write_idx * sizeof(char *));
+	mismatch_data.block_sizes = (int *)realloc(mismatch_data.block_sizes, write_idx * sizeof(int));
+	mismatch_data.mismatch_matrix = (int **)realloc(mismatch_data.mismatch_matrix, write_idx * sizeof(int *));
+
 	return mismatch_data;
 }
