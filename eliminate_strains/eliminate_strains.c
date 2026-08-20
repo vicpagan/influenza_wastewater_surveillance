@@ -235,6 +235,11 @@ int main(int argc, char **argv)
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
 	// NOTE: To be done after the proportion EM calculation stuff, everything above can be freed after mismatch matrix is built
+	for (i = 0; i < mismatch_data_str.num_msa_sequences; i++)
+	{
+		free(mismatch_data_str.msa_sequence_names[i]);
+	}
+	free(mismatch_data_str.msa_sequence_names);
 	for (i = 0; i < mismatch_data_str.num_reads; i++)
 	{
 		free(mismatch_data_str.read_names[i]);
