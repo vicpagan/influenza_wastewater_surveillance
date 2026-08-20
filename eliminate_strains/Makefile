@@ -9,7 +9,7 @@ CFLAGS = -Wall -O3
 DBGCFLAGS = -Wall -O0 -g -fsanitize=address
 
 # -lz links the gz library, -lpthread links pthreads
-LIBS = -lz -lpthread -std=gnu99
+LIBS = -lz -lpthread -lm -std=gnu99
 
 # sources
 SOURCES = eliminate_strains.c calculate_proportions.c calculate_allele_freq.c build_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
