@@ -228,7 +228,11 @@ int main(int argc, char **argv)
 	// system(buffer);
 	// free(buffer);
 
+	printf("Calculating proportions of each strain...\n");
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
 	calculate_proportions(&mismatch_data_str, opt.output_filepath, opt.em_error, opt.freq, 1, 0, 1, opt.num_threads);
+	clock_gettime(CLOCK_MONOTONIC, &tend);
+	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
 	// NOTE: To be done after the proportion EM calculation stuff, everything above can be freed after mismatch matrix is built
 	for (i = 0; i < mismatch_data_str.num_reads; i++)

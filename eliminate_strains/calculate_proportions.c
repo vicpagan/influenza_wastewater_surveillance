@@ -24,6 +24,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     HASHMAP(char, HashmapEntry) hashmap;
     hashmap_init(&hashmap, hashmap_hash_string, strcmp);
     
+    printf("TEST 1\n");
+
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
         char *current_column = (char *)calloc((num_reads * 12) + 1, sizeof(char));
@@ -62,6 +64,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
         }
         free(current_column);
     }
+
+    printf("TEST 2\n");
 
     char **strain_names_to_group = (char **)malloc(num_msa_sequences * sizeof(char *));
     char **strain_names_to_remove = (char **)malloc(num_msa_sequences * sizeof(char *));
@@ -110,6 +114,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     }
     hashmap_cleanup(&hashmap);
 
+    printf("TEST 3\n");
+
     int *columns_to_remove = (int *)calloc(num_msa_sequences, sizeof(int));
     int current_group_idx = 1;
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
@@ -156,6 +162,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
         free(strain_names_to_remove[i]);
     }   
     free(strain_names_to_remove);
+
+    printf("TEST 4\n");
 
     int new_num_msa_sequences = 0;
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
