@@ -243,10 +243,8 @@ int main(int argc, char **argv)
 	for (i = 0; i < mismatch_data_str.num_reads; i++)
 	{
 		free(mismatch_data_str.read_names[i]);
-		free(mismatch_data_str.mismatch_matrix[i]);
 	}
 	free(mismatch_data_str.read_names);
-	free(mismatch_data_str.mismatch_matrix);
 	free(mismatch_data_str.block_sizes);
 
 	return 0;

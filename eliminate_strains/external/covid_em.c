@@ -2,23 +2,7 @@
 
 #include "covid_em.h"
 
-void calculate_q(const int *block_sizes, int **mismatch_matrix, int num_reads, int num_strains, double error_rate, double **q_matrix)
-{
-	int i,j;
-
-	for (i = 0; i < num_reads; i++)
-	{
-		for (j = 0; j < num_strains; j++)
-		{
-			int mismatches = mismatch_matrix[i][j];
-			int matches = block_sizes[i] - mismatches;
-
-			q_matrix[i][j] = pow(error_rate, mismatches) * pow(1.0 - error_rate, matches);
-		}
-	}
-}
-
-void em_update(const double *proportions, double **q_matrix, int num_reads, int num_strains, double *updated_proportions)
+void em_update(const double *proportions, const double **q_matrix, int num_reads, int num_strains, double *updated_proportions)
 {
 	int i,j;
 
@@ -48,7 +32,7 @@ void em_update(const double *proportions, double **q_matrix, int num_reads, int 
 	}
 }
 
-double log_likelihood(const double *proportions, double **q_matrix, int num_reads, int num_strains)
+double log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains)
 {
 	int i,j;
 	double log_likelihood = 0.0;
@@ -68,7 +52,7 @@ double log_likelihood(const double *proportions, double **q_matrix, int num_read
 	return log_likelihood;
 }
 
-double negative_log_likelihood(const double *proportions, double **q_matrix, int num_reads, int num_strains)
+double negative_log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains)
 {
 	return -log_likelihood(proportions, q_matrix, num_reads, num_strains);
 }
