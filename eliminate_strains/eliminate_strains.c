@@ -45,6 +45,9 @@
 
 int main(int argc, char **argv)
 {
+	struct timespec program_start = {0, 0}, program_end = {0, 0};
+	clock_gettime(CLOCK_MONOTONIC, &program_start);
+
 	struct timespec tstart = {0, 0}, tend = {0, 0};
 	Options opt;
 	opt.remove_identical_sequences = 0;
@@ -246,6 +249,9 @@ int main(int argc, char **argv)
 	}
 	free(mismatch_data_str.read_names);
 	free(mismatch_data_str.block_sizes);
+
+	clock_gettime(CLOCK_MONOTONIC, &program_end);
+	printf("Entire program took %.5fsec\n", ((double)program_end.tv_sec + 1.0e-9 * program_end.tv_nsec) - ((double)program_start.tv_sec + 1.0e-9 * program_start.tv_nsec));
 
 	return 0;
 }

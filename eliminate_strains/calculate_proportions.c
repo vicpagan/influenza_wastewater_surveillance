@@ -481,9 +481,6 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     double *p_temp = (double *)malloc(num_msa_sequences * sizeof(double));
     double *result = (double *)malloc(num_msa_sequences * sizeof(double));
 
-    printf("Sleeping for 30 seconds to check peak memory...\n");
-    sleep(30);
-
     free(p0);
     free(p0_rand);
 
