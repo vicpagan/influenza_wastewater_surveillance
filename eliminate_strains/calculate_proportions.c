@@ -529,8 +529,15 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     /////////////////////////// SQUAREM RUNS ///////////////////////////
     ////////////////////////////////////////////////////////////////////
 
+    struct timespec squarem_start = {0, 0}, squarem_end = {0, 0};
+
+    printf("Starting SQUAREM step...\n");
+	clock_gettime(CLOCK_MONOTONIC, &squarem_start);
     double *proportions = run_squarem(theta_0, likelihood_matrix, num_reads, num_msa_sequences);
     double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences);
+    clock_gettime(CLOCK_MONOTONIC, &squarem_end);
+    printf("Took %.5fsec\n", ((double)squarem_end.tv_sec + 1.0e-9 * squarem_end.tv_nsec) - ((double)squarem_start.tv_sec + 1.0e-9 * squarem_start.tv_nsec));
+
 
     if (!proportions || !proportions_rand)
     {
