@@ -21,7 +21,7 @@ void em_update(const double *proportions, const double **q_matrix, int num_reads
 			row_sum += q_matrix[i][j] * proportions[j];
 		}
 
-		// Added this block
+		// Added this line
 		if (row_sum <= 0.0)
 		{
 			row_sum = DBL_MIN;
@@ -33,21 +33,9 @@ void em_update(const double *proportions, const double **q_matrix, int num_reads
 		}
 	}
 
-	// Changed this lower block
-	double total = 0.0;
-
 	for (j = 0; j < num_strains; j++)
 	{
 		updated_proportions[j] /= (double)num_reads;
-		total += updated_proportions[j];
-	}
-
-	if (total > 0.0)
-	{
-		for (j = 0; j < num_strains; j++)
-		{
-			updated_proportions[j] /= total;
-		}
 	}
 }
 
