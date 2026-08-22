@@ -9,6 +9,20 @@
 #include "external/covid_em.h"
 #include "external/hashmap.h"
 
+static int compare_proportions_desc(const void *a, const void *b)
+{
+    const ProportionData *pa = a;
+    const ProportionData *pb = b;
+
+    if (pa->proportion < pb->proportion)
+        return 1;
+
+    if (pa->proportion > pb->proportion)
+        return -1;
+
+    return 0;
+}
+
 static void squarem_set_proportions(const double *theta_1, int num_msa_sequences, double *theta)
 {
     int n_params = num_msa_sequences - 1;
@@ -548,6 +562,17 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     //////////////////////// OUTPUT PROPORTIONS ////////////////////////
     ////////////////////////////////////////////////////////////////////
 
+    ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
+    for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+    {
+        proportions_data[msa_seq_idx].msa_strain_name = mismatch_data_str->msa_sequence_names[i];
+        proportions_data[msa_seq_idx].proportion = proportions[i];
+    }
+    free(theta_0);
+    free(proportions);
+
+    qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
+
     FILE *output_csv_file = fopen(output_csv_filepath, "w");
 
     if (output_csv_file == NULL)
@@ -559,7 +584,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     fprintf(output_csv_file, "strain names\tproportions\n");
     for (int i = 0; i < num_msa_sequences; ++i)
     {
-        fprintf(output_csv_file, "\"%s\"\t%.3f\n", mismatch_data_str->msa_sequence_names[i], proportions[i]);
+        fprintf(output_csv_file, "\"%s\"\t%.3f\n", proportions_data[i].msa_strain_name, proportions_data[i].proportion);
     }
 
     fclose(output_csv_file);
@@ -568,8 +593,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     /////////////////////////// FREE MEMORY ///////////////////////////
     ///////////////////////////////////////////////////////////////////
 
-    free(theta_0);
-    free(proportions);
+    free(proportions_data);
 
     for (read_idx = 0; read_idx < num_reads; read_idx++)
     {

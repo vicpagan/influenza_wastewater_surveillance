@@ -158,5 +158,11 @@ typedef struct HashmapEntry
 	int msa_strain_names_length;
 } HashmapEntry;
 
+typedef struct ProportionData
+{
+	char *msa_strain_name;
+	double proportion;
+} ProportionData;
+
 
 #endif /* _GLOBAL_ */
