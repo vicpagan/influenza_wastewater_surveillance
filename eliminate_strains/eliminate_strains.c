@@ -104,7 +104,7 @@ int main(int argc, char **argv)
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
 		char sam_filename[1000];
-		sprintf(sam_filename, "%s.%d", opt.sam_filepath, ref_idx);
+		sprintf(sam_filename, "%s.%d", opt.sam_prefix_filepath, ref_idx);
 
 		sam_filepaths[ref_idx] = get_filepath_in_working_dir(sam_filename, opt.working_dir);
 
