@@ -56,30 +56,44 @@ static void squarem_set_proportions(const double *theta_1, int num_msa_sequences
 
 static void squarem_fixptfn(const double *theta_1, double *theta_2, const double **l_matrix, int num_reads, int num_msa_sequences, double *proportions, double *updated_proportions)
 {
-    squarem_set_proportions(theta_1, num_msa_sequences, proportions);
+    // squarem_set_proportions(theta_1, num_msa_sequences, proportions);
 
-    em_update(proportions, l_matrix, num_reads, num_msa_sequences, updated_proportions);
+    // em_update(proportions, l_matrix, num_reads, num_msa_sequences, updated_proportions);
 
-    int n_params = num_msa_sequences - 1;
-    for (int i = 0; i < n_params; ++i)
-    {
-        theta_2[i] = updated_proportions[i];
-    }
+    em_update(theta_1, l_matrix, num_reads, num_msa_sequences, theta_2);
+
+
+    // int n_params = num_msa_sequences - 1;
+    // for (int i = 0; i < n_params; ++i)
+    // {
+    //     theta_2[i] = updated_proportions[i];
+    // }
 }
 
 static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences, double *proportions)
 {
-    squarem_set_proportions(theta_1, num_msa_sequences, proportions);
+    // squarem_set_proportions(theta_1, num_msa_sequences, proportions);
+
+    // for (int i = 0; i < num_msa_sequences; ++i)
+    // {
+    //     if (proportions[i] <= 0.0 || proportions[i] >= 1.0)
+    //     {
+    //         return 1.0e10;
+    //     }
+    // }
+
+    // return negative_log_likelihood(proportions, l_matrix, num_reads, num_msa_sequences);
 
     for (int i = 0; i < num_msa_sequences; ++i)
     {
-        if (proportions[i] <= 0.0 || proportions[i] >= 1.0)
+        if (theta_1[i] <= 0.0 || theta_1[i] >= 1.0)
         {
             return 1.0e10;
         }
     }
 
-    return negative_log_likelihood(proportions, l_matrix, num_reads, num_msa_sequences);
+    return negative_log_likelihood(theta_1, l_matrix, num_reads, num_msa_sequences);
+
 }
 
 double *run_squarem(const double *theta_0, const double **l_matrix, int num_reads, int num_msa_sequences)
@@ -92,12 +106,14 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     const double step_max0 = 1.0;
     const double mstep = 4.0;
 
-    const double objfn_inc = 1.0e-10;
+    // const double objfn_inc = 1.0e-10;
+    const double objfn_inc = 1.0;
 
     double step_min = step_min0;
     double step_max = step_max0;
 
-    int n_params = num_msa_sequences - 1;
+    // int n_params = num_msa_sequences - 1;
+    int n_params = num_msa_sequences;
 
     double *theta = malloc(n_params * sizeof(double));
     double *theta_1 = malloc(n_params * sizeof(double));
@@ -112,13 +128,14 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     double *proportions = malloc(num_msa_sequences * sizeof(double));
     double *updated_proportions = malloc(num_msa_sequences * sizeof(double));
 
-    if (!theta || !theta_1 || !theta_2 || !r || !v || !theta_new || !proportions || !updated_proportions)
+    if (!theta || !theta_1 || !theta_2 || !r || !v || !theta_temp || !theta_new || !proportions || !updated_proportions)
     {
         free(theta);
         free(theta_1);
         free(theta_2);
         free(r);
         free(v);
+        free(theta_temp);
         free(theta_new);
         free(proportions);
         free(updated_proportions);
@@ -250,12 +267,12 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         proportions[i] = theta[i];
     }
 
-    proportions[num_msa_sequences - 1] = 1.0;
+    // proportions[num_msa_sequences - 1] = 1.0;
 
-    for (int i = 0; i < n_params; ++i)
-    {
-        proportions[num_msa_sequences - 1] -= theta[i];
-    }
+    // for (int i = 0; i < n_params; ++i)
+    // {
+    //     proportions[num_msa_sequences - 1] -= theta[i];
+    // }
 
     free(theta);
     free(theta_1);
