@@ -85,7 +85,8 @@ static double squarem_objfn(const double *theta_1, const double **l_matrix, int 
 double *run_squarem(const double *theta_0, const double **l_matrix, int num_reads, int num_msa_sequences)
 {
     const int max_iter = 1500;
-    const double tolerance = 1.0e-7;
+    const double convergence_tol = 1.0e-7;
+    const double equality_tol = 1.0e-12;
 
     const double step_min0 = 1.0;
     const double step_max0 = 1.0;
@@ -105,6 +106,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     double *r = malloc(n_params * sizeof(double));
     double *v = malloc(n_params * sizeof(double));
 
+    double *theta_temp = malloc(n_params * sizeof(double));
     double *theta_new = malloc(n_params * sizeof(double));
 
     double *proportions = malloc(num_msa_sequences * sizeof(double));
@@ -144,14 +146,14 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         }
 
         double q1_norm = sqrt(q1_norm_sq);
-        if (q1_norm < tolerance)
+        if (q1_norm < convergence_tol)
         {
             memcpy(theta, theta_1, n_params * sizeof(double));
             break;
         }
 
         double q2_norm = sqrt(q2_norm_sq);
-        if (q2_norm < tolerance)
+        if (q2_norm < convergence_tol)
         {
             memcpy(theta, theta_2, n_params * sizeof(double));
             break;
@@ -170,14 +172,13 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         double alpha;
         if (sv2 > 0.0)
         {
-            alpha = -srv / sv2;
+            alpha = sqrt(q1_norm_sq / sv2);
         }
         else
         {
             alpha = 1.0;
         }
 
-        alpha = fabs(alpha);
         alpha = fmax(step_min, fmin(step_max, alpha));
 
         memcpy(theta_new, theta, n_params * sizeof(double));
@@ -186,6 +187,12 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         {
             theta_new[i] += 2.0 * alpha * r[i];
             theta_new[i] += alpha * alpha * v[i];
+        }
+
+        if (fabs(alpha - 1.0) > 0.01)
+        {
+            squarem_fixptfn(theta_new, theta_temp, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
+            memcpy(theta_new, theta_temp, n_params * sizeof(double));
         }
 
         int invalid_point = 0;
@@ -226,8 +233,12 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
         if (extrapolation_succeeded)
         {
-            step_max = step_max * mstep;
-            if (step_min < 0.0)
+            if (fabs(alpha - step_max) < equality_tol)
+            {
+                step_max = step_max * mstep;
+            }
+            
+            if (fabs(alpha - step_min) < equality_tol && step_min < 0.0)
             {
                 step_min = step_min * mstep;
             }
@@ -252,6 +263,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     free(r);
     free(v);
     free(theta_new);
+    free(theta_temp);
     free(updated_proportions);
 
     return proportions;
