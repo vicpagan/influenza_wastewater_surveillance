@@ -1,4 +1,5 @@
 #include <math.h>
+#include <float.h>
 
 #include "covid_em.h"
 
@@ -18,6 +19,12 @@ void em_update(const double *proportions, const double **q_matrix, int num_reads
 		for (j = 0; j < num_strains; j++)
 		{
 			row_sum += q_matrix[i][j] * proportions[j];
+		}
+
+		// Added this line
+		if (row_sum <= 0.0)
+		{
+			row_sum = DBL_MIN;
 		}
 
 		for (j = 0; j < num_strains; j++)
