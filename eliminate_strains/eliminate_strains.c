@@ -126,8 +126,8 @@ int main(int argc, char **argv)
 	references_data_str.sam_results_str = read_in_sam_results(sam_filepaths, opt.num_references);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Number of reads in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
-	printf("SAM max read length: %d\n", references_data_str.sam_results_str.max_sam_line_length);
+	printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
+	printf("SAM max line length: %d\n", references_data_str.sam_results_str.max_sam_line_length);
 	
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
@@ -237,7 +237,7 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
-	// NOTE: To be done after the proportion EM calculation stuff, everything above can be freed after mismatch matrix is built
+	
 	for (i = 0; i < mismatch_data_str.num_msa_sequences; i++)
 	{
 		free(mismatch_data_str.msa_sequence_names[i]);
