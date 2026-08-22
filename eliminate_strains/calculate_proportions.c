@@ -129,8 +129,6 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        printf("DEBUG: SQUAREM iteration %d\n", iter);
-
         squarem_fixptfn(theta, theta_1, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
         squarem_fixptfn(theta_1, theta_2, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
 
@@ -570,11 +568,6 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     }
     free(theta_0);
     free(proportions);
-
-    for (int msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-    {
-        fprintf(stdout, "\"%s\"\t%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
-    }
 
     qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
 
