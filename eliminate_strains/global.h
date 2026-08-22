@@ -20,7 +20,7 @@ typedef struct Options
 	char problematic_sites_dir[1000];
 
 	// SAM file to write/read alignments
-	char sam_filepath[1000];
+	char sam_prefix_filepath[1000];
 	
 	// read inputs
 	int paired;
@@ -31,9 +31,9 @@ typedef struct Options
 	char reverse_end_filepath[1000];
 
 	// output files
-	char output_filepath[1000];
 	char print_counts_filepath[1000];
 	char print_deletions_filepath[1000];
+	char output_dir[1000];
 	char working_dir[1000];
 
 	// algorithm parameters

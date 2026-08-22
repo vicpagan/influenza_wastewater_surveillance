@@ -9,9 +9,9 @@ static struct option long_options[] =
 {
 	{"help", no_argument, 0, 'h'},
 	{"MSA-filepath", required_argument, 0, 'i'},
-	{"samfile", required_argument, 0, 's'},
+	{"sam-prefix-filepath", required_argument, 0, 's'},
 	{"freq", required_argument, 0, 'f'},
-	{"outfile", required_argument, 0, 'o'},
+	{"output-directory", required_argument, 0, 'o'},
 	{"paired", no_argument, 0, 'p'},
 	{"single_end", required_argument, 0, '0'},
 	{"forward_read", required_argument, 0, '1'},
@@ -47,9 +47,9 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
-	-s, --sam-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
+	-s, --sam-prefix-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
-	-o, --output-filepath [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
+	-o, --output-directory [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
 	-g, --MSA-references-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-p, --paired				Using paired-reads\n\
@@ -157,7 +157,7 @@ void parse_options(int argc, char **argv, Options *opt)
 				fprintf(stderr, "Invalid MSA filepath\n");
 			break;
 		case 's':
-			success = sscanf(optarg, "%s", opt->sam_filepath);
+			success = sscanf(optarg, "%s", opt->sam_prefix_filepath);
 			if (!success)
 				fprintf(stderr, "Invalid SAM filepath\n");
 			break;
@@ -212,9 +212,9 @@ void parse_options(int argc, char **argv, Options *opt)
 				fprintf(stderr, "Invalid error rate\n");
 			break;
 		case 'o':
-			success = sscanf(optarg, "%s", opt->output_filepath);
+			success = sscanf(optarg, "%s", opt->output_dir);
 			if (!success)
-				fprintf(stderr, "Invalid out file\n");
+				fprintf(stderr, "Invalid output directory\n");
 			break;
 		case 'N':
 			success = sscanf(optarg, "%d", &(opt->num_references));

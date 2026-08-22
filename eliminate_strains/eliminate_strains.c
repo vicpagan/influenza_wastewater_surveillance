@@ -233,7 +233,7 @@ int main(int argc, char **argv)
 
 	printf("Calculating proportions of each strain...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	calculate_proportions(&mismatch_data_str, opt.output_filepath, opt.em_error, opt.freq, 1, 0, 1, opt.num_threads);
+	calculate_proportions(&mismatch_data_str, opt.output_dir, opt.em_error, opt.freq, 1, 0, 1, opt.num_threads);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 

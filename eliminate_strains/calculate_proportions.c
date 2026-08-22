@@ -23,67 +23,9 @@ static int compare_proportions_desc(const void *a, const void *b)
     return 0;
 }
 
-static void squarem_set_proportions(const double *theta_1, int num_msa_sequences, double *theta)
+
+static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences)
 {
-    int n_params = num_msa_sequences - 1;
-
-    for (int i = 0; i < n_params; ++i)
-    {
-        theta[i] = fmax(0.0, fmin(1.0, theta_1[i]));
-    }
-
-    double sum = 0.0;
-    for (int i = 0; i < n_params; ++i)
-    {
-        sum += theta[i];
-    }
-
-    if (sum >= 1.0)
-    {
-        double scale = 0.99 / sum;
-        for (int i = 0; i < n_params; ++i)
-        {
-            theta[i] *= scale;
-        }
-
-        theta[n_params] = 0.01;
-    }
-    else
-    {
-        theta[n_params] = 1.0 - sum;
-    }
-}
-
-static void squarem_fixptfn(const double *theta_1, double *theta_2, const double **l_matrix, int num_reads, int num_msa_sequences, double *proportions, double *updated_proportions)
-{
-    // squarem_set_proportions(theta_1, num_msa_sequences, proportions);
-
-    // em_update(proportions, l_matrix, num_reads, num_msa_sequences, updated_proportions);
-
-    em_update(theta_1, l_matrix, num_reads, num_msa_sequences, theta_2);
-
-
-    // int n_params = num_msa_sequences - 1;
-    // for (int i = 0; i < n_params; ++i)
-    // {
-    //     theta_2[i] = updated_proportions[i];
-    // }
-}
-
-static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences, double *proportions)
-{
-    // squarem_set_proportions(theta_1, num_msa_sequences, proportions);
-
-    // for (int i = 0; i < num_msa_sequences; ++i)
-    // {
-    //     if (proportions[i] <= 0.0 || proportions[i] >= 1.0)
-    //     {
-    //         return 1.0e10;
-    //     }
-    // }
-
-    // return negative_log_likelihood(proportions, l_matrix, num_reads, num_msa_sequences);
-
     for (int i = 0; i < num_msa_sequences; ++i)
     {
         if (theta_1[i] <= 0.0 || theta_1[i] >= 1.0)
@@ -93,7 +35,6 @@ static double squarem_objfn(const double *theta_1, const double **l_matrix, int 
     }
 
     return negative_log_likelihood(theta_1, l_matrix, num_reads, num_msa_sequences);
-
 }
 
 double *run_squarem(const double *theta_0, const double **l_matrix, int num_reads, int num_msa_sequences)
@@ -106,29 +47,22 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     const double step_max0 = 1.0;
     const double mstep = 4.0;
 
-    // const double objfn_inc = 1.0e-10;
-    const double objfn_inc = 1.0;
+    const double objfn_inc = 1.0e-10;
 
     double step_min = step_min0;
     double step_max = step_max0;
 
-    // int n_params = num_msa_sequences - 1;
-    int n_params = num_msa_sequences;
+    double *theta = malloc(num_msa_sequences * sizeof(double));
+    double *theta_1 = malloc(num_msa_sequences * sizeof(double));
+    double *theta_2 = malloc(num_msa_sequences * sizeof(double));
 
-    double *theta = malloc(n_params * sizeof(double));
-    double *theta_1 = malloc(n_params * sizeof(double));
-    double *theta_2 = malloc(n_params * sizeof(double));
+    double *r = malloc(num_msa_sequences * sizeof(double));
+    double *v = malloc(num_msa_sequences * sizeof(double));
 
-    double *r = malloc(n_params * sizeof(double));
-    double *v = malloc(n_params * sizeof(double));
+    double *theta_temp = malloc(num_msa_sequences * sizeof(double));
+    double *theta_new = malloc(num_msa_sequences * sizeof(double));
 
-    double *theta_temp = malloc(n_params * sizeof(double));
-    double *theta_new = malloc(n_params * sizeof(double));
-
-    double *proportions = malloc(num_msa_sequences * sizeof(double));
-    double *updated_proportions = malloc(num_msa_sequences * sizeof(double));
-
-    if (!theta || !theta_1 || !theta_2 || !r || !v || !theta_temp || !theta_new || !proportions || !updated_proportions)
+    if (!theta || !theta_1 || !theta_2 || !r || !v || !theta_temp || !theta_new)
     {
         free(theta);
         free(theta_1);
@@ -137,23 +71,21 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         free(v);
         free(theta_temp);
         free(theta_new);
-        free(proportions);
-        free(updated_proportions);
 
         return NULL;
     }
-    memcpy(theta, theta_0,  n_params * sizeof(double));
+    memcpy(theta, theta_0,  num_msa_sequences * sizeof(double));
 
-    double obj_old = squarem_objfn(theta, l_matrix, num_reads, num_msa_sequences, proportions);
+    double obj_old = squarem_objfn(theta, l_matrix, num_reads, num_msa_sequences);
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        squarem_fixptfn(theta, theta_1, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
-        squarem_fixptfn(theta_1, theta_2, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
+        em_update(theta, l_matrix, num_reads, num_msa_sequences, theta_1);
+        em_update(theta_1, l_matrix, num_reads, num_msa_sequences, theta_2);
 
         double q1_norm_sq = 0.0;
         double q2_norm_sq = 0.0;
-        for (int i = 0; i < n_params; ++i)
+        for (int i = 0; i < num_msa_sequences; ++i)
         {
             r[i] = theta_1[i] - theta[i];
             v[i] = theta_2[i] - theta_1[i];
@@ -165,20 +97,20 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         double q1_norm = sqrt(q1_norm_sq);
         if (q1_norm < convergence_tol)
         {
-            memcpy(theta, theta_1, n_params * sizeof(double));
+            memcpy(theta, theta_1, num_msa_sequences * sizeof(double));
             break;
         }
 
         double q2_norm = sqrt(q2_norm_sq);
         if (q2_norm < convergence_tol)
         {
-            memcpy(theta, theta_2, n_params * sizeof(double));
+            memcpy(theta, theta_2, num_msa_sequences * sizeof(double));
             break;
         }
 
         double sv2 = 0.0;
         double srv = 0.0;
-        for (int i = 0; i < n_params; ++i)
+        for (int i = 0; i < num_msa_sequences; ++i)
         {
             v[i] -= r[i];
 
@@ -195,12 +127,11 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         {
             alpha = 1.0;
         }
-
         alpha = fmax(step_min, fmin(step_max, alpha));
 
-        memcpy(theta_new, theta, n_params * sizeof(double));
+        memcpy(theta_new, theta, num_msa_sequences * sizeof(double));
 
-        for (int i = 0; i < n_params; ++i)
+        for (int i = 0; i < num_msa_sequences; ++i)
         {
             theta_new[i] += 2.0 * alpha * r[i];
             theta_new[i] += alpha * alpha * v[i];
@@ -208,13 +139,12 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
         if (fabs(alpha - 1.0) > 0.01)
         {
-            squarem_fixptfn(theta_new, theta_temp, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
-            memcpy(theta_new, theta_temp, n_params * sizeof(double));
+            em_update(theta_new, l_matrix, num_reads, num_msa_sequences, theta_temp);
+            memcpy(theta_new, theta_temp, num_msa_sequences * sizeof(double));
         }
 
         int invalid_point = 0;
-
-        for (int i = 0; i < n_params; ++i)
+        for (int i = 0; i < num_msa_sequences; ++i)
         {
             if (isnan(theta_new[i]) || isinf(theta_new[i]))
             {
@@ -225,17 +155,17 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
         if (invalid_point)
         {
-            memcpy(theta_new, theta_2, n_params * sizeof(double));
+            memcpy(theta_new, theta_2, num_msa_sequences * sizeof(double));
 
             step_max = fmax(step_max0, step_max / mstep);
         }
 
-        double obj_new = squarem_objfn(theta_new, l_matrix, num_reads, num_msa_sequences, proportions);
+        double obj_new = squarem_objfn(theta_new, l_matrix, num_reads, num_msa_sequences);;
 
         int extrapolation_succeeded = 1;
         if (obj_new > obj_old + objfn_inc)
         {
-            memcpy(theta, theta_2, n_params * sizeof(double));
+            memcpy(theta, theta_2, num_msa_sequences * sizeof(double));
 
             extrapolation_succeeded = 0;
 
@@ -243,7 +173,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         }
         else
         {
-            memcpy(theta, theta_new, n_params * sizeof(double));
+            memcpy(theta, theta_new, num_msa_sequences * sizeof(double));
 
             obj_old = obj_new;
         }
@@ -262,31 +192,17 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         }
     }
 
-    for (int i = 0; i < n_params; ++i)
-    {
-        proportions[i] = theta[i];
-    }
-
-    // proportions[num_msa_sequences - 1] = 1.0;
-
-    // for (int i = 0; i < n_params; ++i)
-    // {
-    //     proportions[num_msa_sequences - 1] -= theta[i];
-    // }
-
-    free(theta);
     free(theta_1);
     free(theta_2);
     free(r);
     free(v);
     free(theta_new);
     free(theta_temp);
-    free(updated_proportions);
 
-    return proportions;
+    return theta;
 }
 
-void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_filepath, double error_rate, double filter, int compute_strain_llr, int compute_site_llr, int num_plot, int num_threads)
+void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, double filter, int compute_strain_llr, int compute_site_llr, int num_plot, int num_threads)
 {
     srand((unsigned int)time(NULL));
 
@@ -494,6 +410,43 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     mismatch_data_str->num_msa_sequences = new_num_msa_sequences;
     num_msa_sequences = new_num_msa_sequences;
     free(columns_to_remove);
+    
+
+    char unidentifiable_strains_path[4096];
+    snprintf(unidentifiable_strains_path, sizeof(unidentifiable_strains_path), "%s/unidentifiable_strains.txt", output_dir);
+
+    FILE *unidentifiable_strains_file = fopen(unidentifiable_strains_path, "w");
+    if (unidentifiable_strains_file == NULL)
+    {
+        fprintf(stderr, "Error: Could not open unidentifiable strains file at '%s'\n", unidentifiable_strains_path);
+        exit(1);
+    }
+
+    for (int group_idx = 0; group_idx < strain_names_to_group_idx; group_idx++)
+    {
+        fprintf(unidentifiable_strains_file, "Group %d:\n", group_idx);
+
+        const char *current_char = group_strains[group_idx];
+        while (*current_char != '\0')
+        {
+            if (*current_char == ':')
+            {
+                fputc('\n', unidentifiable_strains_file);
+            }
+            else
+            {
+                fputc(*current_char, unidentifiable_strains_file);
+            }
+            current_char++;
+        }
+
+        fputc('\n\n', unidentifiable_strains_file);
+
+        free(group_strains[group_idx]);
+    }
+
+    fclose(unidentifiable_strains_file);
+    free(group_strains);
 
     /////////////////////////////////////////////////////////////////////
     /////////////////// CALCULATING LIKELIHOOD MATRIX ///////////////////
@@ -607,18 +560,20 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
 
     qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
 
-    FILE *output_csv_file = fopen(output_csv_filepath, "w");
+    char output_csv_filepath[1050];
+    snprintf(output_csv_filepath, sizeof(output_csv_filepath), "%s/proportions.csv", output_dir);
 
+    FILE *output_csv_file = fopen(output_csv_filepath, "w");
     if (output_csv_file == NULL)
     {
         fprintf(stderr, "Error: Could not open output csv file at '%s'!\n", output_csv_filepath);
         exit(1);
     }
 
-    fprintf(output_csv_file, "strain names\tproportions\n");
+    fprintf(output_csv_file, "names.arg,p\n");
     for (int msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
-        fprintf(output_csv_file, "\"%s\"\t%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
+        fprintf(output_csv_file, "\"%s\",%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
     }
 
     fclose(output_csv_file);
