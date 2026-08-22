@@ -100,6 +100,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 {
     const int max_iter = 1500;
     const double convergence_tol = 1.0e-7;
+    const double polish_tol = 1.0e-12;
     const double equality_tol = 1.0e-12;
 
     const double step_min0 = 1.0;
@@ -124,6 +125,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
     double *theta_temp = malloc(n_params * sizeof(double));
     double *theta_new = malloc(n_params * sizeof(double));
+    double *theta_em = malloc(n_params * sizeof(double));
 
     double *proportions = malloc(num_msa_sequences * sizeof(double));
     double *updated_proportions = malloc(num_msa_sequences * sizeof(double));
@@ -146,7 +148,8 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
     double obj_old = squarem_objfn(theta, l_matrix, num_reads, num_msa_sequences, proportions);
 
-    for (int iter = 0; iter < max_iter; ++iter)
+    int squarem_iter;
+    for (squarem_iter = 0; squarem_iter < max_iter; squarem_iter++)
     {
         squarem_fixptfn(theta, theta_1, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
         squarem_fixptfn(theta_1, theta_2, l_matrix, num_reads, num_msa_sequences, proportions, updated_proportions);
@@ -262,6 +265,25 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
         }
     }
 
+    for (int polish_iter = 0; polish_iter < max_iter - squarem_iter; polish_iter++)
+    {
+        em_update(theta, l_matrix, num_reads, num_msa_sequences, theta_em);
+
+        double diff_sq = 0.0;
+        for (int i = 0; i < n_params; ++i)
+        {
+            double d = theta_em[i] - theta[i];
+            diff_sq += d * d;
+        }
+
+        memcpy(theta, theta_em, n_params * sizeof(double));
+
+        if (sqrt(diff_sq) < polish_tol)
+        {
+            break;
+        }
+    }
+
     for (int i = 0; i < n_params; ++i)
     {
         proportions[i] = theta[i];
@@ -279,8 +301,9 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     free(theta_2);
     free(r);
     free(v);
-    free(theta_new);
     free(theta_temp);
+    free(theta_new);
+    free(theta_em);
     free(updated_proportions);
 
     return proportions;
@@ -579,7 +602,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     {
         difference += fabs(proportions[i] - proportions_rand[i]);
     }
-    printf("\nDifference between two optimizations from different starting points %.2g\n", difference);\
+    printf("\nDifference between two optimizations from different starting points %.4g\n", difference);\
 
     free(theta_0_rand);
     free(proportions_rand);
