@@ -72,6 +72,7 @@ int main(int argc, char **argv)
 	opt.verbose = 0;
 	opt.num_threads = 1;
 	strcpy(opt.working_dir, ".");
+	strcpy(opt.output_dir, ".");
 	memset(opt.print_counts_filepath, '\0', 1000);
 	memset(opt.print_deletions_filepath, '\0', 1000);
 	parse_options(argc, argv, &opt);
