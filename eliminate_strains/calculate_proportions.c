@@ -571,6 +571,11 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     free(theta_0);
     free(proportions);
 
+    for (int msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+    {
+        fprintf(stdout, "\"%s\"\t%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
+    }
+
     qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
 
     FILE *output_csv_file = fopen(output_csv_filepath, "w");
