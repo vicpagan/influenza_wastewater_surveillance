@@ -565,8 +565,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
-        proportions_data[msa_seq_idx].msa_strain_name = mismatch_data_str->msa_sequence_names[i];
-        proportions_data[msa_seq_idx].proportion = proportions[i];
+        proportions_data[msa_seq_idx].msa_strain_name = mismatch_data_str->msa_sequence_names[msa_seq_idx];
+        proportions_data[msa_seq_idx].proportion = proportions[msa_seq_idx];
     }
     free(theta_0);
     free(proportions);
@@ -582,9 +582,9 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_fil
     }
 
     fprintf(output_csv_file, "strain names\tproportions\n");
-    for (int i = 0; i < num_msa_sequences; ++i)
+    for (int msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
-        fprintf(output_csv_file, "\"%s\"\t%.3f\n", proportions_data[i].msa_strain_name, proportions_data[i].proportion);
+        fprintf(output_csv_file, "\"%s\"\t%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
     }
 
     fclose(output_csv_file);
