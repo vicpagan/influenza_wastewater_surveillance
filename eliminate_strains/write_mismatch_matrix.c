@@ -306,19 +306,16 @@ void *write_mismatch_matrix_paired(void *ptr)
 		}
 
 		if (best_alignment_size != -1)
-		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
+	{
+			pthread_mutex_lock(thread_str->write_mutex);
+			fprintf(thread_str->outfile, "%s\t%d", readname, best_alignment_size);
 			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
+					fprintf(thread_str->outfile, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
 			}
-
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
+			fprintf(thread_str->outfile, "\n");
 			pthread_mutex_unlock(thread_str->write_mutex);
-		}
+	}
 	}
 
 	free(row_buffer);
@@ -510,17 +507,14 @@ void *write_mismatch_matrix_single(void *ptr)
 
 		if (best_alignment_size != -1)
 		{
-			sprintf(row_buffer, "%s\t%d", readname, best_alignment_size);
-			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-			{
-				char num_buffer[16];
-				sprintf(num_buffer, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
-				strcat(row_buffer, num_buffer);
-			}
-
-			pthread_mutex_lock(thread_str->write_mutex);
-			fprintf(thread_str->outfile, "%s\n", row_buffer);
-			pthread_mutex_unlock(thread_str->write_mutex);
+				pthread_mutex_lock(thread_str->write_mutex);
+				fprintf(thread_str->outfile, "%s\t%d", readname, best_alignment_size);
+				for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+				{
+						fprintf(thread_str->outfile, "\t%d", best_mismatch_matrix_row[msa_seq_idx]);
+				}
+				fprintf(thread_str->outfile, "\n");
+				pthread_mutex_unlock(thread_str->write_mutex);
 		}
 	}
 
