@@ -20,15 +20,16 @@ static struct option long_options[] =
 	{"coverage", required_argument, 0, 'c'},
 	{"fasta", no_argument, 0, 'a'},
 	{"llr", no_argument, 0, 'l'},
+	{"num-top-strains-llr", required_argument, 0, 'z'},
 	{"min", required_argument, 0, 'm'},
 	{"max", required_argument, 0, 'x'},
 	{"print-allele-counts", required_argument, 0, 'b'},
 	{"cores", required_argument, 0, 't'},
-	{"MSA-reference-dir", required_argument, 0, 'g'},
+	{"reference-sequences-dir", required_argument, 0, 'g'},
 	{"no-read-sam", no_argument, 0, 'n'},
 	{"print-deletions", required_argument, 0, 'r'},
+	{"threshold-for-deleted-sites", required_argument, 0, 'j'},
 	{"clean-my-reads", no_argument, 0, 'd'},
-	{"bowtie2-alignment_dir", required_argument, 0, 'B'},
 	{"num-references", required_argument, 0, 'N'},
 	{"seq-length-threshold", required_argument, 0, 'k'},
 	{"trim-length", required_argument, 0, 'w'},
@@ -50,7 +51,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-s, --sam-prefix-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
 	-o, --output-directory [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
-	-g, --MSA-references-dir [REQUIRED,DIR]	Directory of MSA reference sequences\n\
+	-g, --reference-sequences-dir [REQUIRED,DIR]	Directory of reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-p, --paired				Using paired-reads\n\
 	-0, --single_end_file [FILE]		Single-end reads\n\
@@ -66,6 +67,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-c, --coverage [integer]		Number of reads needed to calculate allele freq [default: 50]\n\
 	-a, --fasta				Reads are in FASTA format [default: FASTQ]\n\
 	-l, --llr				Perform the LLR procedure\n\
+	-z, --num-top-strains-llr [int]	Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
 	-m, --min [decimal]			Minimum strains remaining to invoke iterative procedure [default: 100]\n\
 	-x, --max [decimal]			Maximum strains remaining for EM algorithm [default: 10000]\n\
 	-b, --print-allele-counts [FILE]	Print allele counts to file\n\
@@ -73,7 +75,6 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-n, --no-read-sam			Don't read in sam file to memory\n\
 	-r, --print-deletions [FILE]		Print sites with deletions\n\
 	-j, --threshold-for-deleted-sites	Threshold to print deleted sites [default: 0.001]\n\
-	-B, --bowtie2-alignment_dir [REQUIRED,DIR]		Bowtie2 reference\n\
 	-W, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
 	-v, --verbose				Show verbose debug output from Bowtie2 commands\n\
 	-R, --remove-identical			Remove identical strains from the MSA before processing\n\
@@ -107,7 +108,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hpdlnaB:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:vR", long_options, &option_index);
+		c = getopt_long(argc, argv, "hpdlna:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:z:vR", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -139,14 +140,9 @@ void parse_options(int argc, char **argv, Options *opt)
 			opt->llr = 1;
 			break;
 		case 'g':
-			success = sscanf(optarg, "%s", opt->msa_reference_dir);
+			success = sscanf(optarg, "%s", opt->reference_sequences_dir);
 			if (!success)
-				fprintf(stderr, "Invalid MSA reference directory\n");
-			break;
-		case 'B':
-			success = sscanf(optarg, "%s", opt->bowtie2_reference_dir);
-			if (!success)
-				fprintf(stderr, "Invalid reference directory\n");
+				fprintf(stderr, "Invalid reference sequences directory\n");
 			break;
 		case 'n':
 			opt->no_read_bam = 1;
@@ -256,6 +252,11 @@ void parse_options(int argc, char **argv, Options *opt)
 			break;
 		case 'R':
 			opt->remove_identical_sequences = 1;
+			break;
+		case 'z':
+			success = sscanf(optarg, "%d", &(opt->num_top_strains_llr));
+			if (!success)
+				fprintf(stderr, "Invalid number of top strains to compute LLR for\n");
 			break;
 		}
 	}

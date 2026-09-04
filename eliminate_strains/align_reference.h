@@ -11,6 +11,6 @@
  * @param bowtie2_reference_filepaths 
  * @return ReferencesData 
  */
-ReferencesData align_references(char **msa_reference_filepaths, char **bowtie2_reference_filepaths, int num_references);
+ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_str, int num_references);
 
 #endif // ALIGN_REFERENCE_H

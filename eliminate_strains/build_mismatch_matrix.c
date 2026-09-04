@@ -100,15 +100,6 @@ void *build_mismatch_matrix_paired(void *ptr)
 			int first_status = parse_sam_flags(atoi(first_sam_fields[1]));
 			if (first_status == 0 || first_status == 1)
 			{
-				if (first_sam_fields[3] == NULL)
-				{
-					fprintf(stderr, "DEBUG: ref_idx=%d sam_line_idx=%d raw='%s'\n", ref_idx, sam_line_idx, sam_results_str.sam_results[ref_idx][sam_line_idx]);
-				}
-				if (second_sam_fields[3] == NULL)
-				{
-					fprintf(stderr, "DEBUG: ref_idx=%d sam_line_idx=%d raw='%s'\n", ref_idx, sam_line_idx, sam_results_str.sam_results[ref_idx][sam_line_idx + 1]);
-				}
-
 				int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
 				int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
 
@@ -524,28 +515,6 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	int i, ref_idx, msa_seq_idx;
 
 	int num_references = references_data_str->num_references;
-	references_data_str->reference_sequence_msa_indexes = (int *)malloc(num_references * sizeof(int));
-
-	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
-	{
-		references_data_str->reference_sequence_msa_indexes[ref_idx] = -1;
-		msa_seq_idx = 0;
-		while (msa_seq_idx < msa_str->num_sequences && references_data_str->reference_sequence_msa_indexes[ref_idx] == -1)
-		{
-			if (strcmp(references_data_str->reference_names[ref_idx], msa_str->sequence_names[msa_seq_idx]) == 0)
-			{
-				references_data_str->reference_sequence_msa_indexes[ref_idx] = msa_seq_idx;
-			}
-			msa_seq_idx++;
-		}
-
-		if (references_data_str->reference_sequence_msa_indexes[ref_idx] == -1)
-		{
-			fprintf(stderr, "Error: reference sequence '%s' was not found in the MSA.\n", references_data_str->reference_names[ref_idx]);
-			exit(1);
-		}
-	}
-
 	int num_sam_lines = references_data_str->sam_results_str.num_sam_lines;
 	int max_sam_line_length = references_data_str->sam_results_str.max_sam_line_length;
 

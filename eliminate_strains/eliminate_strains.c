@@ -58,6 +58,7 @@ int main(int argc, char **argv)
 	opt.fasta_format = 0;
 	opt.freq = 0.01;
 	opt.llr = 0;
+	opt.num_top_strains_llr = 10;
 	opt.min_strains = 500;
 	opt.max_strains = 10000;
 	opt.num_threads = 1;
@@ -79,14 +80,19 @@ int main(int argc, char **argv)
 
 	int i;
 
+	if (opt.em_error < 0.001 || opt.em_error > 1)
+    {
+        fprintf(stderr, "Error: EM error rate should be in the range (0.001, 1)!\n");
+        exit(1);
+    }
+
 	if (opt.num_references <= 0)
 	{
 		fprintf(stderr, "Error: -N/--num-references must be set to a positive number.\n");
 		exit(1);
 	}
 
-	char **msa_reference_filepaths = list_sorted_dir_files(opt.msa_reference_dir, opt.num_references, "MSA reference");
-	char **bowtie2_reference_filepaths = list_sorted_dir_files(opt.bowtie2_reference_dir, opt.num_references, "Bowtie2 reference");
+	char **reference_sequences_filepaths = list_sorted_dir_files(opt.reference_sequences_dir, opt.num_references, "MSA reference");
 
 	if (opt.clean_reads == 1)
 	{
@@ -94,9 +100,15 @@ int main(int argc, char **argv)
 		clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 	}
 
-	ReferencesData references_data_str = align_references(msa_reference_filepaths, bowtie2_reference_filepaths, opt.num_references);
-	references_data_str.reference_names = (char **)malloc(opt.num_references * sizeof(char *));
-	references_data_str.num_references = opt.num_references;
+	printf("Reading in MSA...\n");
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	MSA msa_str = read_in_msa(opt.msa_filepath);
+	clock_gettime(CLOCK_MONOTONIC, &tend);
+	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
+	printf("MSA sequence length: %d\n", msa_str.sequence_length);
+
+	ReferencesData references_data_str = align_references(reference_sequences_filepaths, &msa_str, opt.num_references);
 
 	char **sam_filepaths = (char **)malloc(opt.num_references * sizeof(char *));
 
@@ -117,9 +129,7 @@ int main(int argc, char **argv)
 		// 	printf("Error rates of reads are too high! Cleaning reads...\n");
 		// 	clean_reads(opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.sequence_length_threshold, opt.trim_length, opt.fastq_trimmer_threshold);
 		// }
-		perform_bowtie_alignment(bowtie2_reference_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_filepaths[ref_idx], opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
-
-		references_data_str.reference_names[ref_idx] = read_fastx_header_name(msa_reference_filepaths[ref_idx]);
+		perform_bowtie_alignment(reference_sequences_filepaths[ref_idx], opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, sam_filepaths[ref_idx], opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
 	}
 
 	printf("Reading in SAM results...\n");
@@ -135,14 +145,6 @@ int main(int argc, char **argv)
 		free(sam_filepaths[ref_idx]);
 	}
 	free(sam_filepaths);
-
-	printf("Reading in MSA...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	MSA msa_str = read_in_msa(opt.msa_filepath);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
-	printf("MSA sequence length: %d\n", msa_str.sequence_length);
 
 	if (opt.remove_identical_sequences == 1)
 	{
@@ -213,12 +215,10 @@ int main(int argc, char **argv)
 
 	for (i = 0; i < opt.num_references; i++)
 	{
-		free(msa_reference_filepaths[i]);
-		free(bowtie2_reference_filepaths[i]);
-	}
-	free(msa_reference_filepaths);
-	free(bowtie2_reference_filepaths);
-
+		free(reference_sequences_filepaths[i]);
+\	}
+	free(reference_sequences_filepaths);
+\
 	// char* buffer = (char*)malloc(FASTA_MAXLINE*sizeof(char));
 	// memset(buffer,'\0',FASTA_MAXLINE);
 	// if (opt.llr==1)
@@ -233,11 +233,7 @@ int main(int argc, char **argv)
 	// free(buffer);
 
 	printf("Calculating proportions of each strain...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	calculate_proportions(&mismatch_data_str, opt.output_dir, opt.em_error, opt.freq, 1, 0, 1, opt.num_threads);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-
+	calculate_proportions(&mismatch_data_str, opt.output_dir, opt.em_error, opt.freq, opt.llr, opt.num_top_strains_llr, 1, opt.num_threads);
 	
 	for (i = 0; i < mismatch_data_str.num_msa_sequences; i++)
 	{

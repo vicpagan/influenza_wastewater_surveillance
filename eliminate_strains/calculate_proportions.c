@@ -23,7 +23,6 @@ static int compare_proportions_desc(const void *a, const void *b)
     return 0;
 }
 
-
 static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences)
 {
     for (int i = 0; i < num_msa_sequences; ++i)
@@ -202,22 +201,17 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     return theta;
 }
 
-void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, double filter, int compute_strain_llr, int compute_site_llr, int num_plot, int num_threads)
+void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, double filter, int compute_strain_llr, int num_top_strains_llr, int num_plot, int num_threads)
 {
     srand((unsigned int)time(NULL));
+
+    struct timespec start = {0, 0}, end = {0, 0};
 
     int i, read_idx, msa_seq_idx;
 	int num_reads = mismatch_data_str->num_reads;
     if (num_reads <= 0)
     {
         printf("Error: No reads in mismatch matrix!\n");
-        exit(1);
-    }
-
-    // FIXME: Should this check be made in the beginning? Yknow so people dont waste all their time with the rest of the code just for it to fail here.
-    if (error_rate < 0.001 || error_rate > 1)
-    {
-        printf("Error: EM error rate should be in the range (0.001, 1)!\n");
         exit(1);
     }
 
@@ -228,6 +222,9 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     /////////////////////////////////////////////////////////////////////
     ////////////////// REMOVING UNIDENTIFIABLE STRAINS //////////////////
     /////////////////////////////////////////////////////////////////////
+
+    printf("Grouping unidentifiable strains...\n");
+	clock_gettime(CLOCK_MONOTONIC, &start);
 
     HASHMAP(char, HashmapEntry) hashmap;
     hashmap_init(&hashmap, hashmap_hash_string, strcmp);
@@ -410,7 +407,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     mismatch_data_str->num_msa_sequences = new_num_msa_sequences;
     num_msa_sequences = new_num_msa_sequences;
     free(columns_to_remove);
-    
+
 
     char unidentifiable_strains_path[4096];
     snprintf(unidentifiable_strains_path, sizeof(unidentifiable_strains_path), "%s/unidentifiable_strains.txt", output_dir);
@@ -447,6 +444,9 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
 
     fclose(unidentifiable_strains_file);
     free(group_strains);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    printf("Took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
 
     /////////////////////////////////////////////////////////////////////
     /////////////////// CALCULATING LIKELIHOOD MATRIX ///////////////////
@@ -511,15 +511,12 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     /////////////////////////// SQUAREM RUNS ///////////////////////////
     ////////////////////////////////////////////////////////////////////
 
-    struct timespec squarem_start = {0, 0}, squarem_end = {0, 0};
-
     printf("Starting SQUAREM step...\n");
-	clock_gettime(CLOCK_MONOTONIC, &squarem_start);
+	clock_gettime(CLOCK_MONOTONIC, &start);
     double *proportions = run_squarem(theta_0, likelihood_matrix, num_reads, num_msa_sequences);
     double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences);
-    clock_gettime(CLOCK_MONOTONIC, &squarem_end);
-    printf("Took %.5fsec\n", ((double)squarem_end.tv_sec + 1.0e-9 * squarem_end.tv_nsec) - ((double)squarem_start.tv_sec + 1.0e-9 * squarem_start.tv_nsec));
-
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    printf("Took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
 
     if (!proportions || !proportions_rand)
     {

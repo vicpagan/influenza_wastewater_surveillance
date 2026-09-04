@@ -2,8 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "align_reference.h"
+#include "file_utils.h"
 #include "external/needleman_wunsch.h"
 
 /**
@@ -14,69 +16,75 @@
  * @param bowtie2_reference_filepaths 
  * @return ReferencesData 
  */
-ReferencesData align_references(char **msa_reference_filepaths, char **bowtie2_reference_filepaths, int num_references)
+ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_str, int num_references)
 {
-	ReferencesData references_data_str;
-	references_data_str.reference_indexes = (int **)malloc(num_references * sizeof(int *));
+	int ref_idx, msa_seq_idx;
 
-	int ref_idx;
+	ReferencesData references_data_str;
+	references_data_str.reference_names = (char **)malloc(num_references * sizeof(char *));
+	references_data_str.reference_sequence_msa_indexes = (int *)malloc(num_references * sizeof(int));
+	references_data_str.reference_indexes = (int **)malloc(num_references * sizeof(int *));
+	references_data_str.num_references = num_references;
+
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
-		references_data_str.reference_indexes[ref_idx] = (int *)calloc(FASTA_MAXLINE, sizeof(int));
+		references_data_str.reference_names[ref_idx] = read_fastx_header_name(reference_sequences_filepaths[ref_idx]);
+		references_data_str.reference_sequence_msa_indexes[ref_idx] = -1;
+		msa_seq_idx = 0;
+
+		while (msa_seq_idx < msa_str->num_sequences && references_data_str.reference_sequence_msa_indexes[ref_idx] == -1)
+		{
+			if (strcmp(references_data_str.reference_names[ref_idx], msa_str->sequence_names[msa_seq_idx]) == 0)
+			{
+				references_data_str.reference_sequence_msa_indexes[ref_idx] = msa_seq_idx;
+			}
+			msa_seq_idx++;
+		}
+
+		if (references_data_str.reference_sequence_msa_indexes[ref_idx] == -1)
+		{
+			fprintf(stderr, "Error: reference '%s' not found in MSA.\n", references_data_str.reference_names[ref_idx]);
+			exit(1);
+		}
+		
+		references_data_str.reference_indexes[ref_idx] = (int *)malloc(FASTA_MAXLINE * sizeof(int));
 		if (references_data_str.reference_indexes[ref_idx] == NULL)
 		{
 			fprintf(stderr, "Memory allocation for reference index array failed.\n");
 			exit(1);
 		}
+		memset(references_data_str.reference_indexes[ref_idx], -1, FASTA_MAXLINE * sizeof(int));
 
 		char buffer[FASTA_MAXLINE];
 
-		// read in msa reference sequence
-		FILE *msa_reference_file;
-		if ((msa_reference_file = fopen(msa_reference_filepaths[ref_idx], "r")) == (FILE *)NULL)
+		// read in reference sequence
+		FILE *reference_sequence_file;
+		if ((reference_sequence_file = fopen(reference_sequences_filepaths[ref_idx], "r")) == (FILE *)NULL)
 		{
 			fprintf(stderr, "Error! Cannot open MSA reference file.");
 			exit(1);
 		}
 
-		char *msa_reference_sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-		if (!msa_reference_sequence)
+		char *reference_sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
+		if (!reference_sequence)
 		{
 			fprintf(stderr, "Memory allocation for MSA reference sequence failed\n");
 			exit(1);
 		}
-		while (fgets(buffer, FASTA_MAXLINE, msa_reference_file) != NULL)
+		while (fgets(buffer, FASTA_MAXLINE, reference_sequence_file) != NULL)
 		{
 			if (buffer[0] != '>')
 			{
-				strcpy(msa_reference_sequence, buffer);
+				buffer[strcspn(buffer, "\r\n")] = '\0';
+                strcpy(reference_sequence, buffer);
 			}
 		}
-		fclose(msa_reference_file);
+		fclose(reference_sequence_file);
 
-		// read in bowtie2 reference sequence
-		FILE *bowtie2_reference_file;
-		if ((bowtie2_reference_file = fopen(bowtie2_reference_filepaths[ref_idx], "r")) == (FILE *)NULL)
-		{
-			fprintf(stderr, "Error! Cannot open Bowtie2 reference file.");
-			exit(1);
-		}
+		// read in imputed reference sequence from msa
+		char *msa_imputed_reference_sequence = strdup(msa_str->sequences[references_data_str.reference_sequence_msa_indexes[ref_idx]]);
 
-		char *bowtie2_reference_sequence = (char *)calloc(FASTA_MAXLINE, sizeof(char));
-		if (!bowtie2_reference_sequence)
-		{
-			fprintf(stderr, "Memory allocation for Bowtie2 reference sequence failed\n");
-			exit(1);
-		}
-		while (fgets(buffer, FASTA_MAXLINE, bowtie2_reference_file) != NULL)
-		{
-			if (buffer[0] != '>')
-			{
-				strcpy(bowtie2_reference_sequence, buffer);
-			}
-		}
-		fclose(bowtie2_reference_file);
-
+		// NOTE: needleman-wunsch may not be necessary here, can just do a linear scan/walk?
 		// use needleman-wunsch alignment
 		nw_aligner_t *nw = needleman_wunsch_new();
 		alignment_t *result = alignment_create(256);
@@ -91,7 +99,7 @@ ReferencesData align_references(char **msa_reference_filepaths, char **bowtie2_r
 		char case_sensitive = 0;
 		scoring_t scoring;
 		scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
-		needleman_wunsch_align(msa_reference_sequence, bowtie2_reference_sequence, &scoring, nw, result);
+		needleman_wunsch_align(reference_sequence, msa_imputed_reference_sequence, &scoring, nw, result);
 		// printf("seqA: %s\n", result->result_a);
 		// printf("seqB: %s\n", result->result_b);
 		printf("alignment score: %i\n", result->score);
@@ -112,7 +120,7 @@ ReferencesData align_references(char **msa_reference_filepaths, char **bowtie2_r
 			}
 			else
 			{
-				if (result->result_a[i] != result->result_b[i])
+				if (toupper(result->result_a[i]) != toupper(result->result_b[i]))
 				{
 					current_reference_index[i] = -1;
 				}
@@ -133,8 +141,8 @@ ReferencesData align_references(char **msa_reference_filepaths, char **bowtie2_r
 			}
 		}
 
-		free(msa_reference_sequence);
-		free(bowtie2_reference_sequence);
+		free(reference_sequence);
+		free(msa_imputed_reference_sequence);
 		needleman_wunsch_free(nw);
 		alignment_free(result);
 	}

@@ -15,8 +15,7 @@ typedef struct Options
 {
 	// MSA, reference, and alignment files
 	char msa_filepath[1000];
-	char msa_reference_dir[1000];
-	char bowtie2_reference_dir[1000];
+	char reference_sequences_dir[1000];
 	char problematic_sites_dir[1000];
 
 	// SAM file to write/read alignments
@@ -44,6 +43,7 @@ typedef struct Options
 	int min_strains;
 	int max_strains;
 	int llr;
+	int num_top_strains_llr;
 	int num_references;
 
 	// clean_reads parameters
