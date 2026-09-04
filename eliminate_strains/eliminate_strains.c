@@ -216,9 +216,9 @@ int main(int argc, char **argv)
 	for (i = 0; i < opt.num_references; i++)
 	{
 		free(reference_sequences_filepaths[i]);
-\	}
+	}
 	free(reference_sequences_filepaths);
-\
+
 	// char* buffer = (char*)malloc(FASTA_MAXLINE*sizeof(char));
 	// memset(buffer,'\0',FASTA_MAXLINE);
 	// if (opt.llr==1)
