@@ -100,19 +100,15 @@ void align_reference(ReferenceData *reference_data_str, char *msa_reference_file
 	int i, k;
 	for (i = 0; i < length_alignment; i++)
 	{
-		if (result->result_a[i] == '-')
-		{
-			reference_data_str->reference_index[i] = -1;
-		}
-		else
+		if (result->result_a[i] != '-')
 		{
 			if (result->result_a[i] != result->result_b[i])
 			{
-				reference_data_str->reference_index[i] = -1;
+				reference_data_str->reference_index[j] = -1;
 			}
 			else
 			{
-				reference_data_str->reference_index[i] = j;
+				reference_data_str->reference_index[j] = i;
 
 				// TODO: implement problematic sites 
 				// for (k = 0; k < problematic_sites_str->num_problematic_sites; k++)
