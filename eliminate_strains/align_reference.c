@@ -114,19 +114,15 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		int i, k;
 		for (i = 0; i < length_alignment; i++)
 		{
-			if (result->result_a[i] == '-')
-			{
-				current_reference_index[i] = -1;
-			}
-			else
+			if (result->result_a[i] != '-')
 			{
 				if (toupper(result->result_a[i]) != toupper(result->result_b[i]))
 				{
-					current_reference_index[i] = -1;
+					current_reference_index[j] = -1;
 				}
 				else
 				{
-					current_reference_index[i] = j;
+					current_reference_index[j] = i;
 
 					// TODO: implement problematic sites 
 					// for (k = 0; k < problematic_sites_str->num_problematic_sites; k++)
