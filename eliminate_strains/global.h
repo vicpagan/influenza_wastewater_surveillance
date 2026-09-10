@@ -160,6 +160,7 @@ typedef struct HashmapEntry
 
 typedef struct ProportionData
 {
+	int column_index;
 	char *msa_strain_name;
 	double proportion;
 } ProportionData;

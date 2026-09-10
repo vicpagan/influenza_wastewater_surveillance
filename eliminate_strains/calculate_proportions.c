@@ -207,7 +207,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
 
     struct timespec start = {0, 0}, end = {0, 0};
 
-    int i, read_idx, msa_seq_idx;
+    int i, n, read_idx, msa_seq_idx, msa_seq_idx_without;
 	int num_reads = mismatch_data_str->num_reads;
     if (num_reads <= 0)
     {
@@ -540,22 +540,135 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
 
     double log_likelihood_with = log_likelihood(proportions, likelihood_matrix, num_reads, num_msa_sequences);
 
-    // TODO: Implement per-strain LLR step
-
-    ////////////////////////////////////////////////////////////////////
-    //////////////////////// OUTPUT PROPORTIONS ////////////////////////
-    ////////////////////////////////////////////////////////////////////
-
     ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
         proportions_data[msa_seq_idx].msa_strain_name = mismatch_data_str->msa_sequence_names[msa_seq_idx];
         proportions_data[msa_seq_idx].proportion = proportions[msa_seq_idx];
+        proportions_data[msa_seq_idx].column_index = msa_seq_idx;
     }
+    qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
+
+    int num_llr_strains = num_top_strains_llr;
+    if (num_llr_strains > num_msa_sequences)
+    {
+        num_llr_strains = num_msa_sequences;
+    }
+
+    double *llr = (double *)malloc(num_llr_strains * sizeof(double));
+    for (i = 0; i < num_llr_strains; i++)
+    {
+        llr[i] = NAN;
+    }
+
+    int *too_large_flag = (int *)calloc(num_llr_strains, sizeof(int));
+
+    if (compute_strain_llr)
+    {
+        printf("Starting per-strain LLR step...\n");
+        clock_gettime(CLOCK_MONOTONIC, &start);
+
+        int num_msa_sequences_without = num_msa_sequences - 1;
+        double *theta0_without = (double *)malloc(num_msa_sequences_without * sizeof(double));
+        double **likelihood_matrix_without = (double **)malloc(num_reads * sizeof(double *));
+        for (read_idx = 0; read_idx < num_reads; read_idx++)
+        {
+            likelihood_matrix_without[read_idx] = (double *)malloc(num_msa_sequences_without * sizeof(double));
+        }
+
+
+        for (n = 0; n < num_llr_strains; n++)
+        {
+            int column_to_exclude = proportions_data[n].column_index;
+
+            double sum = 0.0;
+            int j = 0;
+            for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+            {
+                if (msa_seq_idx != column_to_exclude)
+                {
+                    theta0_without[j] = proportions[msa_seq_idx];
+                    sum += proportions[msa_seq_idx];
+                    j++;
+                }
+            }
+            for (msa_seq_idx_without = 0; msa_seq_idx_without < num_msa_sequences_without; msa_seq_idx_without++)
+            {
+                theta0_without[msa_seq_idx_without] /= sum;
+            }
+
+            for (read_idx = 0; read_idx < num_reads; read_idx++)
+            {
+                j = 0;
+                for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+                {
+                    if (msa_seq_idx != column_to_exclude)
+                    {
+                        likelihood_matrix_without[read_idx][j] = likelihood_matrix[read_idx][msa_seq_idx];
+                        j++;
+                    }
+                }
+            }
+
+            double *proportions_without = run_squarem(theta0_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without);
+
+            if (proportions_without == NULL)
+            {
+                llr[n] = 100.0;
+                too_large_flag[n] = 1;
+            }
+            else
+            {
+                double log_likelihood_without = log_likelihood(proportions_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without);
+                free(proportions_without);
+
+                if (isnan(log_likelihood_without))
+                {
+                    llr[n] = 100.0;
+                    too_large_flag[n] = 1;
+                }
+                else
+                {
+                    llr[n] = 2.0 * (log_likelihood_with - log_likelihood_without);
+                    too_large_flag[n] = 0;
+                }
+            }
+        }
+
+        free(theta0_without);
+        for (read_idx = 0; read_idx < num_reads; read_idx++)
+        {
+            free(likelihood_matrix_without[read_idx]);
+        }
+        free(likelihood_matrix_without);
+
+        clock_gettime(CLOCK_MONOTONIC, &end);
+        printf("LLR took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
+    }
+
+    // ai-made debugging stuff for right now
+    if (compute_strain_llr)
+    {
+        printf("\nDEBUG: Per-strain LLR results (top %d strains by proportion)\n", num_llr_strains);
+        printf("%-30s %8s %12s %14s %8s\n", "strain", "rank", "proportion", "LLR", "flag");
+        for (int n = 0; n < num_llr_strains; n++)
+        {
+            printf("%-30s %8d %12.6f %14.4f %8s\n",
+                   proportions_data[n].msa_strain_name,
+                   n,
+                   proportions_data[n].proportion,
+                   llr[n],
+                   too_large_flag[n] ? "FAIL" : "ok");
+        }
+        printf("\n");
+    }
+
+    ////////////////////////////////////////////////////////////////////
+    //////////////////////// OUTPUT PROPORTIONS ////////////////////////
+    ////////////////////////////////////////////////////////////////////
+
     free(theta_0);
     free(proportions);
-
-    qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
 
     char output_csv_filepath[1050];
     snprintf(output_csv_filepath, sizeof(output_csv_filepath), "%s/proportions.csv", output_dir);
@@ -586,4 +699,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
         free(likelihood_matrix[read_idx]);
     }
     free(likelihood_matrix);
+
+    free(llr);
+    free(too_large_flag);
 }
