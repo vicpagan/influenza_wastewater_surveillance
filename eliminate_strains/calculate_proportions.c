@@ -622,7 +622,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
                 double log_likelihood_without = log_likelihood(proportions_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without);
                 free(proportions_without);
 
-                if (isnan(log_likelihood_without))
+                if (isnan(log_likelihood_without) || isinf(log_likelihood_without))
                 {
                     llr[n] = 100.0;
                     too_large_flag[n] = 1;
