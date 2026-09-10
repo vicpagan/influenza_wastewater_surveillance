@@ -84,6 +84,9 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		// read in imputed reference sequence from msa
 		char *msa_imputed_reference_sequence = strdup(msa_str->sequences[references_data_str.reference_sequence_msa_indexes[ref_idx]]);
 
+		printf("SEQ A: %s\n", reference_sequence);
+		printf("SEQ B: %s\n\n", msa_imputed_reference_sequence);
+
 		// NOTE: needleman-wunsch may not be necessary here, can just do a linear scan/walk?
 		// use needleman-wunsch alignment
 		nw_aligner_t *nw = needleman_wunsch_new();
