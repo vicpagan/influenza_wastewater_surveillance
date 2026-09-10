@@ -95,7 +95,7 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		char no_start_gap_penalty = 1;
 		char no_end_gap_penalty = 1;
 		char no_gaps_in_a = 0, no_gaps_in_b = 1;
-		char no_mismatches = 0;
+		char no_mismatches = 1;
 		char case_sensitive = 0;
 		scoring_t scoring;
 		scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
