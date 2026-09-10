@@ -84,8 +84,8 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		// read in imputed reference sequence from msa
 		char *msa_imputed_reference_sequence = strdup(msa_str->sequences[references_data_str.reference_sequence_msa_indexes[ref_idx]]);
 
-		// printf("SEQ A: %s\n", reference_sequence);
-		// printf("SEQ B: %s\n\n", msa_imputed_reference_sequence);
+		printf("SEQ A: %s\n", reference_sequence);
+		printf("SEQ B: %s\n\n", msa_imputed_reference_sequence);
 
 		// NOTE: needleman-wunsch may not be necessary here, can just do a linear scan/walk?
 		// use needleman-wunsch alignment
@@ -103,8 +103,8 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		scoring_t scoring;
 		scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
 		needleman_wunsch_align(reference_sequence, msa_imputed_reference_sequence, &scoring, nw, result);
-		// printf("DEBUG: seqA: %s\n", result->result_a);
-		// printf("DEBUG: seqB: %s\n", result->result_b);
+		printf("DEBUG: seqA: %s\n", result->result_a);
+		printf("DEBUG: seqB: %s\n", result->result_b);
 		printf("alignment score: %i\n", result->score);
 
 		// fill reference indicies
