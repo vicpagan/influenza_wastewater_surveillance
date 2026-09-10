@@ -5,8 +5,8 @@ CC = gcc
 # -Wall turns on most, but not all, compiler warnings
 # -O3 is for compiler optimizations
 # -g adds debugging information to the executable file
-CFLAGS = -Wall -O3
-DBGCFLAGS = -Wall -O0 -g -fsanitize=address
+CFLAGS = -Wall -O3 -fopenmp
+DBGCFLAGS = -Wall -O0 -g -fopenmp -fsanitize=address
 
 # -lz links the gz library, -lpthread links pthreads
 LIBS = -lz -lpthread -lm -std=gnu99

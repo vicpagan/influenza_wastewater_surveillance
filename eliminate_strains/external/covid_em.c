@@ -1,68 +1,68 @@
 #include <math.h>
 #include <float.h>
+#include <omp.h>
 
 #include "covid_em.h"
 
-void em_update(const double *proportions, const double **q_matrix, int num_reads, int num_strains, double *updated_proportions)
+void em_update(const double *proportions, const double **q_matrix, int num_reads, int num_strains, double *updated_proportions, int num_threads)
 {
-	int i,j;
+	#pragma omp parallel for num_threads(num_threads)
+    for (int j = 0; j < num_strains; j++)
+    {
+        updated_proportions[j] = 0.0;
+    }
 
-	for (j = 0; j < num_strains; j++)
-	{
-		updated_proportions[j] = 0.0;
-	}
+    #pragma omp parallel for num_threads(num_threads) reduction(+:updated_proportions[:num_strains])
+    for (int i = 0; i < num_reads; i++)
+    {
+        double row_sum = 0.0;
+        for (int j = 0; j < num_strains; j++)
+        {
+            row_sum += q_matrix[i][j] * proportions[j];
+        }
 
-	for (i = 0; i < num_reads; i++)
-	{
-		double row_sum = 0.0;
+        if (row_sum <= 0.0)
+        {
+            row_sum = DBL_MIN;
+        }
 
-		for (j = 0; j < num_strains; j++)
-		{
-			row_sum += q_matrix[i][j] * proportions[j];
-		}
+        for (int j = 0; j < num_strains; j++)
+        {
+            updated_proportions[j] += q_matrix[i][j] * proportions[j] / row_sum;
+        }
+    }
 
-		// Added this line
-		if (row_sum <= 0.0)
-		{
-			row_sum = DBL_MIN;
-		}
-
-		for (j = 0; j < num_strains; j++)
-		{
-			updated_proportions[j] += q_matrix[i][j] * proportions[j] / row_sum;
-		}
-	}
-
-	for (j = 0; j < num_strains; j++)
-	{
-		updated_proportions[j] /= (double)num_reads;
-	}
+	#pragma omp parallel for num_threads(num_threads)
+    for (int j = 0; j < num_strains; j++)
+    {
+        updated_proportions[j] /= (double)num_reads;
+    }
 }
 
-double log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains)
+double log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains, int num_threads)
 {
-	int i,j;
-	double log_likelihood = 0.0;
+    double log_likelihood = 0.0;
 
-	for (i = 0; i < num_reads; i++)
-	{
-		double row_sum = 0.0;
-		for (j = 0; j < num_strains; j++)
-		{
-			row_sum += q_matrix[i][j] * proportions[j];
-		}
+    #pragma omp parallel for num_threads(num_threads) reduction(+:log_likelihood)
+    for (int i = 0; i < num_reads; i++)
+    {
+        double row_sum = 0.0;
+        for (int j = 0; j < num_strains; j++)
+        {
+            row_sum += q_matrix[i][j] * proportions[j];
+        }
 
-		if (row_sum <= 0.0)
-		{
-			row_sum = DBL_MIN;
-		}
-		
-		log_likelihood += log(row_sum);
-	}
-	return log_likelihood;
+        if (row_sum <= 0.0)
+        {
+            row_sum = DBL_MIN;
+        }
+
+        log_likelihood += log(row_sum);
+    }
+    return log_likelihood;
 }
 
-double negative_log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains)
+double negative_log_likelihood(const double *proportions, const double **q_matrix, int num_reads, int num_strains, int num_threads)
 {
-	return -log_likelihood(proportions, q_matrix, num_reads, num_strains);
+    return -log_likelihood(proportions, q_matrix, num_reads, num_strains, num_threads);
 }
