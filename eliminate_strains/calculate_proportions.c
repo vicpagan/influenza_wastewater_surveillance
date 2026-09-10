@@ -513,8 +513,8 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
 
     printf("Starting SQUAREM step...\n");
 	clock_gettime(CLOCK_MONOTONIC, &start);
-    double *proportions = run_squarem(theta_0, likelihood_matrix, num_reads, num_msa_sequences);
-    double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences);
+    double *proportions = run_squarem(theta_0, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
+    double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
     clock_gettime(CLOCK_MONOTONIC, &end);
     printf("Took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
 
