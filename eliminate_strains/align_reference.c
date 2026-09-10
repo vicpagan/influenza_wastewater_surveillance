@@ -94,7 +94,7 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		int gap_extend = -1;
 		char no_start_gap_penalty = 1;
 		char no_end_gap_penalty = 1;
-		char no_gaps_in_a = 0, no_gaps_in_b = 0;
+		char no_gaps_in_a = 0, no_gaps_in_b = 1;
 		char no_mismatches = 0;
 		char case_sensitive = 0;
 		scoring_t scoring;
