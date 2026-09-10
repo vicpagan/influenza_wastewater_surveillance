@@ -100,8 +100,8 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 		scoring_t scoring;
 		scoring_init(&scoring, match, mismatch, gap_open, gap_extend, no_start_gap_penalty, no_end_gap_penalty, no_gaps_in_a, no_gaps_in_b, no_mismatches, case_sensitive);
 		needleman_wunsch_align(reference_sequence, msa_imputed_reference_sequence, &scoring, nw, result);
-		// printf("seqA: %s\n", result->result_a);
-		// printf("seqB: %s\n", result->result_b);
+		printf("DEBUG: seqA: %s\n", result->result_a);
+		printf("DEBUG: seqB: %s\n", result->result_b);
 		printf("alignment score: %i\n", result->score);
 
 		// fill reference indicies
@@ -136,6 +136,13 @@ ReferencesData align_references(char **reference_sequences_filepaths, MSA *msa_s
 				j++;
 			}
 		}
+
+		printf("DEBUG: Printing reference index\n");
+		for (i = 0; i < length_alignment; i++)
+		{
+			printf("%d ", current_reference_index[i]);
+		}
+		printf("\n\n");
 
 		free(reference_sequence);
 		free(msa_imputed_reference_sequence);
