@@ -23,7 +23,7 @@ static int compare_proportions_desc(const void *a, const void *b)
     return 0;
 }
 
-static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences)
+static double squarem_objfn(const double *theta_1, const double **l_matrix, int num_reads, int num_msa_sequences, int num_threads)
 {
     for (int i = 0; i < num_msa_sequences; ++i)
     {
@@ -33,10 +33,10 @@ static double squarem_objfn(const double *theta_1, const double **l_matrix, int 
         }
     }
 
-    return negative_log_likelihood(theta_1, l_matrix, num_reads, num_msa_sequences);
+    return negative_log_likelihood(theta_1, l_matrix, num_reads, num_msa_sequences,  num_threads);
 }
 
-double *run_squarem(const double *theta_0, const double **l_matrix, int num_reads, int num_msa_sequences)
+double *run_squarem(const double *theta_0, const double **l_matrix, int num_reads, int num_msa_sequences, int num_threads)
 {
     const int max_iter = 1500;
     const double convergence_tol = 1.0e-7;
@@ -75,12 +75,12 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     }
     memcpy(theta, theta_0,  num_msa_sequences * sizeof(double));
 
-    double obj_old = squarem_objfn(theta, l_matrix, num_reads, num_msa_sequences);
+    double obj_old = squarem_objfn(theta, l_matrix, num_reads, num_msa_sequences, num_threads);
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        em_update(theta, l_matrix, num_reads, num_msa_sequences, theta_1);
-        em_update(theta_1, l_matrix, num_reads, num_msa_sequences, theta_2);
+        em_update(theta, l_matrix, num_reads, num_msa_sequences, theta_1, num_threads);
+        em_update(theta_1, l_matrix, num_reads, num_msa_sequences, theta_2, num_threads);
 
         double q1_norm_sq = 0.0;
         double q2_norm_sq = 0.0;
@@ -138,7 +138,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
 
         if (fabs(alpha - 1.0) > 0.01)
         {
-            em_update(theta_new, l_matrix, num_reads, num_msa_sequences, theta_temp);
+            em_update(theta_new, l_matrix, num_reads, num_msa_sequences, theta_temp, num_threads);
             memcpy(theta_new, theta_temp, num_msa_sequences * sizeof(double));
         }
 
@@ -159,7 +159,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
             step_max = fmax(step_max0, step_max / mstep);
         }
 
-        double obj_new = squarem_objfn(theta_new, l_matrix, num_reads, num_msa_sequences);;
+        double obj_new = squarem_objfn(theta_new, l_matrix, num_reads, num_msa_sequences, num_threads);
 
         int extrapolation_succeeded = 1;
         if (obj_new > obj_old + objfn_inc)
@@ -538,7 +538,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     ///////////////////////////// LLR STEP /////////////////////////////
     ////////////////////////////////////////////////////////////////////
 
-    double log_likelihood_with = log_likelihood(proportions, likelihood_matrix, num_reads, num_msa_sequences);
+    double log_likelihood_with = log_likelihood(proportions, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
 
     ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
@@ -610,7 +610,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
                 }
             }
 
-            double *proportions_without = run_squarem(theta0_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without);
+            double *proportions_without = run_squarem(theta0_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without, num_threads);
 
             if (proportions_without == NULL)
             {
@@ -619,7 +619,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
             }
             else
             {
-                double log_likelihood_without = log_likelihood(proportions_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without);
+                double log_likelihood_without = log_likelihood(proportions_without, (const double **)likelihood_matrix_without, num_reads, num_msa_sequences_without, num_threads);
                 free(proportions_without);
 
                 if (isnan(log_likelihood_without) || isinf(log_likelihood_without))
