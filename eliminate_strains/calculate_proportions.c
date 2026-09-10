@@ -529,7 +529,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     {
         difference += fabs(proportions[i] - proportions_rand[i]);
     }
-    printf("\nDifference between two optimizations from different starting points %.2g\n", difference);\
+    printf("Difference between two optimizations from different starting points %.2g\n", difference);\
 
     free(theta_0_rand);
     free(proportions_rand);

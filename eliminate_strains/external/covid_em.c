@@ -47,15 +47,18 @@ double log_likelihood(const double *proportions, const double **q_matrix, int nu
 	for (i = 0; i < num_reads; i++)
 	{
 		double row_sum = 0.0;
-
 		for (j = 0; j < num_strains; j++)
 		{
 			row_sum += q_matrix[i][j] * proportions[j];
 		}
 
+		if (row_sum <= 0.0)
+		{
+			row_sum = DBL_MIN;
+		}
+		
 		log_likelihood += log(row_sum);
 	}
-
 	return log_likelihood;
 }
 
