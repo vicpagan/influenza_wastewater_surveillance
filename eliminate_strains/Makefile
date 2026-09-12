@@ -12,7 +12,7 @@ DBGCFLAGS = -Wall -O0 -g -fopenmp -fsanitize=address
 LIBS = -lz -lpthread -lm -std=gnu99
 
 # sources
-SOURCES = eliminate_strains.c calculate_proportions.c calculate_allele_freq.c build_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
+SOURCES = eliminate_strains.c calculate_proportions.c calculate_allele_freq.c build_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_references.c
 EXTERNAL = external/covid_em.c external/hashmap.c
 OBJECTS = $(SOURCES:.c=.o)
 
