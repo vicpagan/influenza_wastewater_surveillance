@@ -108,7 +108,7 @@ int main(int argc, char **argv)
 	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
 	printf("MSA sequence length: %d\n", msa_str.sequence_length);
 
-	ReferencesData references_data_str = align_references(reference_sequences_filepaths, &msa_str, opt.num_references);
+	ReferencesData references_data_str = align_references(reference_sequences_filepaths, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
 
 	char **sam_filepaths = (char **)malloc(opt.num_references * sizeof(char *));
 
