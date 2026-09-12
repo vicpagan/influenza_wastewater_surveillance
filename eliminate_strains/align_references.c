@@ -20,7 +20,7 @@ ReferencesData align_references(char **reference_sequences_filepaths, char *non_
 {
 	int i, ref_idx, msa_seq_idx, site_idx;
 
-	char buffer[FASTA_MAXLINE];
+	char buffer[FASTA_MAXLINE * 10]; // 10 is the max number of digits of each 32-bit integer in base-10
 
 	ReferencesData references_data_str;
 	references_data_str.reference_names = (char **)malloc(num_references * sizeof(char *));
