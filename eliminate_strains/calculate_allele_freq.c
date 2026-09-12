@@ -161,7 +161,7 @@ void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thr
 			{
 				for (k = 0; k < first_cigar_vals[j]; k++)
 				{
-					int first_pos_in_msa = references_data_str->reference_indexes[best_sam_index][first_sequence_start_pos + first_reference_offset];
+					int first_pos_in_msa = references_data_str->references_to_msa_positions[best_sam_index][first_sequence_start_pos + first_reference_offset];
 
 					if (first_cigar_chars[j] == 'M')
 					{
@@ -196,7 +196,7 @@ void calculate_allele_freq_paired(double **allele, MSA *msa_str, double freq_thr
 			{
 				for (k = 0; k < second_cigar_vals[j]; k++)
 				{
-					int second_pos_in_msa = references_data_str->reference_indexes[best_sam_index][second_sequence_start_pos + second_reference_offset];
+					int second_pos_in_msa = references_data_str->references_to_msa_positions[best_sam_index][second_sequence_start_pos + second_reference_offset];
 
 					if (second_cigar_chars[j] == 'M')
 					{
@@ -598,7 +598,7 @@ void calculate_allele_freq_single(double **allele, MSA *msa_str, double freq_thr
 			{
 				for (k = 0; k < cigar_vals[j]; k++)
 				{
-					int pos_in_msa = references_data_str->reference_indexes[best_sam_index][sequence_start_pos + reference_offset];
+					int pos_in_msa = references_data_str->references_to_msa_positions[best_sam_index][sequence_start_pos + reference_offset];
 
 					if (cigar_chars[j] == 'M')
 					{

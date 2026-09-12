@@ -160,7 +160,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 				{
 					for (k = 0; k < first_cigar_vals[j]; k++)
 					{
-						int first_pos_in_msa = references_data_str->reference_indexes[ref_idx][first_sequence_start_pos + first_reference_offset];
+						int first_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][first_sequence_start_pos + first_reference_offset];
 
 						if (first_cigar_chars[j] == 'M')
 						{
@@ -192,7 +192,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 				{
 					for (k = 0; k < second_cigar_vals[j]; k++)
 					{
-						int second_pos_in_msa = references_data_str->reference_indexes[ref_idx][second_sequence_start_pos + second_reference_offset];
+						int second_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][second_sequence_start_pos + second_reference_offset];
 
 						if (second_cigar_chars[j] == 'M')
 						{
@@ -429,7 +429,7 @@ void *build_mismatch_matrix_single(void *ptr)
 				{
 					for (k = 0; k < cigar_vals[j]; k++)
 					{
-						int pos_in_msa = references_data_str->reference_indexes[ref_idx][sequence_start_pos + reference_offset];
+						int pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][sequence_start_pos + reference_offset];
 
 						if (cigar_chars[j] == 'M')
 						{
