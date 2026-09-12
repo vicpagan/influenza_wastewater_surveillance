@@ -13,7 +13,7 @@ LIBS = -lz -lpthread -lm -std=gnu99
 
 # sources
 SOURCES = eliminate_strains.c calculate_proportions.c calculate_allele_freq.c build_mismatch_matrix.c options.c msa.c sam.c bowtie_alignment.c clean_reads.c file_utils.c align_reference.c
-EXTERNAL = external/needleman_wunsch.c external/alignment.c external/alignment_scoring.c external/covid_em.c external/hashmap.c
+EXTERNAL = external/covid_em.c external/hashmap.c
 OBJECTS = $(SOURCES:.c=.o)
 
 # the build target executable:

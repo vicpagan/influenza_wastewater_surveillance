@@ -52,67 +52,65 @@ SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references)
 			fprintf(stderr, "SAM results file '%s' could not be opened.\n", sam_results_filepaths[ref_idx]);
 			exit(1);
 		}
-		else
+		
+		int num_sam_lines = 0;
+		int max_sam_line_length = 0;
+
+		while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)
 		{
-			int num_sam_lines = 0;
-			int max_sam_line_length = 0;
-
-			while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)
+			if (buffer[0] != '@')
 			{
-				if (buffer[0] != '@')
+				int sam_line_length = 0;
+				for (i = 0; buffer[i] != '\n'; i++)
 				{
-					int sam_line_length = 0;
-					for (i = 0; buffer[i] != '\n'; i++)
-					{
-						sam_line_length++;
-					}
-
-					if (sam_line_length > max_sam_line_length)
-					{
-						max_sam_line_length = sam_line_length;
-					}
-
-					num_sam_lines++;
+					sam_line_length++;
 				}
-			}
 
-			if (ref_idx == 0)
-			{
-				sam_results_str.num_sam_lines = num_sam_lines;
-			}
-
-			if (sam_results_str.num_sam_lines != num_sam_lines)
-			{
-				fprintf(stderr, "Error: Number of reads in SAM file '%s' is different than previous SAM file '%s'", sam_results_filepaths[ref_idx], sam_results_filepaths[ref_idx - 1]);
-				exit(1);
-			}
-			if (sam_results_str.max_sam_line_length < max_sam_line_length)
-			{
-				sam_results_str.max_sam_line_length = max_sam_line_length;
-			}
-
-			sam_results_str.sam_results[ref_idx] = (char **)malloc(sam_results_str.num_sam_lines * sizeof(char *));
-			char **current_ref_sam_results = sam_results_str.sam_results[ref_idx];
-			for (int i = 0; i < sam_results_str.num_sam_lines; i++)
-			{
-				current_ref_sam_results[i] = (char *)calloc((max_sam_line_length + 1), sizeof(char));
-			}
-
-			gzrewind(sam_results_file);
-
-			i = 0;
-			while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)
-			{
-				if (buffer[0] != '@')
+				if (sam_line_length > max_sam_line_length)
 				{
-					buffer[strcspn(buffer, "\r\n")] = '\0';
-					strcpy(current_ref_sam_results[i], buffer);
-					i++;
+					max_sam_line_length = sam_line_length;
 				}
-			}
 
-			gzclose(sam_results_file);
+				num_sam_lines++;
+			}
 		}
+
+		if (ref_idx == 0)
+		{
+			sam_results_str.num_sam_lines = num_sam_lines;
+		}
+
+		if (sam_results_str.num_sam_lines != num_sam_lines)
+		{
+			fprintf(stderr, "Error: Number of reads in SAM file '%s' is different than previous SAM file '%s'", sam_results_filepaths[ref_idx], sam_results_filepaths[ref_idx - 1]);
+			exit(1);
+		}
+		if (sam_results_str.max_sam_line_length < max_sam_line_length)
+		{
+			sam_results_str.max_sam_line_length = max_sam_line_length;
+		}
+
+		sam_results_str.sam_results[ref_idx] = (char **)malloc(sam_results_str.num_sam_lines * sizeof(char *));
+		char **current_ref_sam_results = sam_results_str.sam_results[ref_idx];
+		for (int i = 0; i < sam_results_str.num_sam_lines; i++)
+		{
+			current_ref_sam_results[i] = (char *)calloc((max_sam_line_length + 1), sizeof(char));
+		}
+
+		gzrewind(sam_results_file);
+
+		i = 0;
+		while (gzgets(sam_results_file, buffer, FASTA_MAXLINE) != NULL)
+		{
+			if (buffer[0] != '@')
+			{
+				buffer[strcspn(buffer, "\r\n")] = '\0';
+				strcpy(current_ref_sam_results[i], buffer);
+				i++;
+			}
+		}
+
+		gzclose(sam_results_file);
 	}
 	return sam_results_str;
 }

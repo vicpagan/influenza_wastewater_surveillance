@@ -9,10 +9,11 @@ static struct option long_options[] =
 {
 	{"help", no_argument, 0, 'h'},
 	{"MSA-filepath", required_argument, 0, 'i'},
+	{"non-imputed-positions-filepath", required_argument, 0, 'p'},
 	{"sam-prefix-filepath", required_argument, 0, 's'},
 	{"freq", required_argument, 0, 'f'},
 	{"output-directory", required_argument, 0, 'o'},
-	{"paired", no_argument, 0, 'p'},
+	{"paired", no_argument, 0, 'P'},
 	{"single_end", required_argument, 0, '0'},
 	{"forward_read", required_argument, 0, '1'},
 	{"reverse_read", required_argument, 0, '2'},
@@ -43,17 +44,18 @@ static struct option long_options[] =
 };
 
 // TODO: add the following line once problematic sites aspect is implemented
-// -p, --problematic_sites_dir [REQUIRED,DIR]	Directory of lists of problematic sites\n
+// -S, --problematic_sites_dir [REQUIRED,DIR]	Directory of lists of problematic sites\n
 char usage[] = "\neliminate_strains [OPTIONS]\n\
 	\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
+	-p, --non-imputed-positions-filepath [REQUIRED,FILE]	Filepath of the non-imputed positions for each strain within the MSA\n\
 	-s, --sam-prefix-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
 	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
 	-o, --output-directory [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
 	-g, --reference-sequences-dir [REQUIRED,DIR]	Directory of reference sequences\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
-	-p, --paired				Using paired-reads\n\
+	-P, --paired				Using paired-reads\n\
 	-0, --single_end_file [FILE]		Single-end reads\n\
 	-1, --forward-file [FILE]		If using paired-reads, the forward reads file\n\
 	-2, --reverse-file [FILE]		If using paired-reads, the reverse reads file\n\
@@ -108,7 +110,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	}
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hpdlna:i:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:z:vR", long_options, &option_index);
+		c = getopt_long(argc, argv, "hPdlna:i:p:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:z:vR", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -130,7 +132,7 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid deletions file\n");
 			break;
-		case 'p':
+		case 'P':
 			opt->paired = 1;
 			break;
 		case 'a':
@@ -152,6 +154,11 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid MSA filepath\n");
 			break;
+		case 'p':
+			success = sscanf(optarg, "%s", opt->non_imputed_positions_filepath);
+			if (!success)
+				fprintf(stderr, "Invalid non-imputed positions filepath\n");
+			break;	
 		case 's':
 			success = sscanf(optarg, "%s", opt->sam_prefix_filepath);
 			if (!success)

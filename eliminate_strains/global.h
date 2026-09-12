@@ -15,6 +15,7 @@ typedef struct Options
 {
 	// MSA, reference, and alignment files
 	char msa_filepath[1000];
+	char non_imputed_positions_filepath[1000];
 	char reference_sequences_dir[1000];
 	char problematic_sites_dir[1000];
 
@@ -117,7 +118,8 @@ typedef struct ReferencesData
 	int *reference_sequence_msa_indexes;
 	char **reference_names;
 
-	int **reference_indexes;
+	int **references_to_msa_positions;
+	int *reference_sequence_lengths;
 	SAMResults sam_results_str;
 	// ProblematicSites problematic_sites_str;
 } ReferencesData;

@@ -12,7 +12,7 @@
 #include "clean_reads.h"
 #include "bowtie_alignment.h"
 #include "file_utils.h"
-#include "align_reference.h"
+#include "align_references.h"
 #include "calculate_allele_freq.h"
 #include "build_mismatch_matrix.h"
 #include "calculate_proportions.h"
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
 	if (opt.num_references <= 0)
 	{
-		fprintf(stderr, "Error: -N/--num-references must be set to a positive number.\n");
+		fprintf(stderr, "Error: -N/--num-references must be set to a positive integer.\n");
 		exit(1);
 	}
 
@@ -198,12 +198,13 @@ int main(int argc, char **argv)
 
 	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
 	{
-		free(references_data_str.reference_indexes[ref_idx]);
+		free(references_data_str.references_to_msa_positions[ref_idx]);
 		free(references_data_str.reference_names[ref_idx]);
 	}
-	free(references_data_str.reference_indexes);
+	free(references_data_str.references_to_msa_positions);
 	free(references_data_str.reference_names);
 	free(references_data_str.reference_sequence_msa_indexes);
+	free(references_data_str.reference_sequence_lengths);
 
 	for (i = 0; i < msa_str.num_sequences; i++)
 	{
