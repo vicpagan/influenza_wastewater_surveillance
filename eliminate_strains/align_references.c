@@ -86,7 +86,7 @@ ReferencesData align_references(char **reference_sequences_filepaths, char *non_
 
 		int found_strain = 0;
 		int processed_strain = 0;
-		while (gzgets(non_imputed_positions_file, buffer, FASTA_MAXLINE) != NULL && !processed_strain)
+		while (gzgets(non_imputed_positions_file, buffer, FASTA_MAXLINE * 10) != NULL && !processed_strain)
 		{
 			buffer[strcspn(buffer, "\r\n")] = '\0';
 			if (buffer[0] == '>')
@@ -108,7 +108,7 @@ ReferencesData align_references(char **reference_sequences_filepaths, char *non_
 					site_idx = 0;
 					while (delim != NULL)
 					{
-						references_data_str.references_to_msa_positions[ref_idx][site_idx] = atoi(delim); // NOTE: if file is one-indexed, subtract 1
+						references_data_str.references_to_msa_positions[ref_idx][site_idx] = atoi(delim);
 						delim = strtok(NULL, ",");
 						site_idx++;
 					}
