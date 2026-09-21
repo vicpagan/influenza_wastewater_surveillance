@@ -534,12 +534,6 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     free(theta_0_rand);
     free(proportions_rand);
 
-    ////////////////////////////////////////////////////////////////////
-    ///////////////////////////// LLR STEP /////////////////////////////
-    ////////////////////////////////////////////////////////////////////
-
-    double log_likelihood_with = log_likelihood(proportions, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
-
     ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
@@ -549,24 +543,49 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     }
     qsort(proportions_data, (size_t)num_msa_sequences, sizeof(ProportionData), compare_proportions_desc);
 
-    int num_llr_strains = num_top_strains_llr;
-    if (num_llr_strains > num_msa_sequences)
+    // print out proportions results
+    char output_proportions_filepath[1050];
+    snprintf(output_proportions_filepath, sizeof(output_proportions_filepath), "%s/proportions.csv", output_dir);
+
+    FILE *output_proportions_file = fopen(output_proportions_filepath, "w");
+    if (output_proportions_file == NULL)
     {
-        num_llr_strains = num_msa_sequences;
+        fprintf(stderr, "Error: Could not open output csv file at '%s'!\n", output_proportions_filepath);
+        exit(1);
     }
 
-    double *llr = (double *)malloc(num_llr_strains * sizeof(double));
-    for (i = 0; i < num_llr_strains; i++)
+    fprintf(output_proportions_file, "names.arg,p\n");
+    for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
-        llr[i] = NAN;
+        fprintf(output_proportions_file, "\"%s\",%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
     }
 
-    int *too_large_flag = (int *)calloc(num_llr_strains, sizeof(int));
+    fclose(output_proportions_file);
+
+    ////////////////////////////////////////////////////////////////////
+    ///////////////////////////// LLR STEP /////////////////////////////
+    ////////////////////////////////////////////////////////////////////
 
     if (compute_strain_llr)
     {
         printf("Starting per-strain LLR step...\n");
         clock_gettime(CLOCK_MONOTONIC, &start);
+
+        double log_likelihood_with = log_likelihood(proportions, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
+
+        int num_llr_strains = num_top_strains_llr;
+        if (num_llr_strains > num_msa_sequences)
+        {
+            num_llr_strains = num_msa_sequences;
+        }
+
+        double *llr = (double *)malloc(num_llr_strains * sizeof(double));
+        for (i = 0; i < num_llr_strains; i++)
+        {
+            llr[i] = NAN;
+        }
+
+        int *too_large_flag = (int *)calloc(num_llr_strains, sizeof(int));
 
         int num_msa_sequences_without = num_msa_sequences - 1;
         double *theta0_without = (double *)malloc(num_msa_sequences_without * sizeof(double));
@@ -624,7 +643,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
 
                 if (isnan(log_likelihood_without) || isinf(log_likelihood_without))
                 {
-                    llr[n] = 100.0;
+                    llr[n] = NAN;
                     too_large_flag[n] = 1;
                 }
                 else
@@ -642,56 +661,38 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
         }
         free(likelihood_matrix_without);
 
+        // print out llr results
+        char output_llr_filepath[1050];
+        snprintf(output_llr_filepath, sizeof(output_llr_filepath), "%s/per_strain_llr.csv", output_dir);
+
+        FILE *output_llr_file = fopen(output_llr_filepath, "w");
+        if (output_llr_file == NULL)
+        {
+            fprintf(stderr, "Error: Could not open output csv file at '%s'!\n", output_llr_filepath);
+            exit(1);
+        }
+
+        fprintf(output_llr_file, "names.arg,p,llr\n");
+        for (i = 0; i < num_llr_strains; i++)
+        {
+            fprintf(output_llr_file, "\"%s\",%.3f,%.3f\n", proportions_data[i].msa_strain_name, proportions_data[i].proportion, llr[i]);
+        }
+
+        fclose(output_llr_file);
+
         clock_gettime(CLOCK_MONOTONIC, &end);
         printf("LLR took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
-    }
 
-    // ai-made debugging stuff for right now
-    if (compute_strain_llr)
-    {
-        printf("\nDEBUG: Per-strain LLR results (top %d strains by proportion)\n", num_llr_strains);
-        printf("%-30s %8s %12s %14s %8s\n", "strain", "rank", "proportion", "LLR", "flag");
-        for (int n = 0; n < num_llr_strains; n++)
-        {
-            printf("%-30s %8d %12.6f %14.4f %8s\n",
-                   proportions_data[n].msa_strain_name,
-                   n,
-                   proportions_data[n].proportion,
-                   llr[n],
-                   too_large_flag[n] ? "FAIL" : "ok");
-        }
-        printf("\n");
-    }
-
-    ////////////////////////////////////////////////////////////////////
-    //////////////////////// OUTPUT PROPORTIONS ////////////////////////
-    ////////////////////////////////////////////////////////////////////
-
-    free(theta_0);
-    free(proportions);
-
-    char output_csv_filepath[1050];
-    snprintf(output_csv_filepath, sizeof(output_csv_filepath), "%s/proportions.csv", output_dir);
-
-    FILE *output_csv_file = fopen(output_csv_filepath, "w");
-    if (output_csv_file == NULL)
-    {
-        fprintf(stderr, "Error: Could not open output csv file at '%s'!\n", output_csv_filepath);
-        exit(1);
-    }
-
-    fprintf(output_csv_file, "names.arg,p\n");
-    for (int msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-    {
-        fprintf(output_csv_file, "\"%s\",%.3f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
-    }
-
-    fclose(output_csv_file);
+        free(llr);
+        free(too_large_flag);
+    }    
 
     ///////////////////////////////////////////////////////////////////
     /////////////////////////// FREE MEMORY ///////////////////////////
     ///////////////////////////////////////////////////////////////////
 
+    free(theta_0);
+    free(proportions);
     free(proportions_data);
 
     for (read_idx = 0; read_idx < num_reads; read_idx++)
@@ -700,6 +701,4 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     }
     free(likelihood_matrix);
 
-    free(llr);
-    free(too_large_flag);
 }
