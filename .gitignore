@@ -71,5 +71,8 @@ working/
 *.fastq
 *test.txt
 
+# vs code
+*.vscode
+
 # notes
 NOTES.md
