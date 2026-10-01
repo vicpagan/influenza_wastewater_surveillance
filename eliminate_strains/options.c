@@ -130,6 +130,9 @@ void parse_options(int argc, char **argv, Options *opt)
 		print_help_statement();
 		exit(0);
 	}
+
+	extract_reference_strains_args(&argc, argv, opt);
+	
 	while (1)
 	{
 		c = getopt_long(argc, argv, "hPdlna:i:p:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:z:vR", long_options, &option_index);
