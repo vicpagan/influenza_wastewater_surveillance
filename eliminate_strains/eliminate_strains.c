@@ -100,6 +100,20 @@ int main(int argc, char **argv)
 	printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
 	printf("SAM max line length: %d\n\n", references_data_str.sam_results_str.max_sam_line_length);
 
+	int sam_lines_per_read = 1;
+	if (opt.paired)
+	{
+		sam_lines_per_read = 2;
+	}
+
+	if (references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read > opt.max_num_reads)
+	{
+		fprintf(stderr, "Error: Too many aligned reads!\n");
+		fprintf(stderr, "Max number of reads: %d\n", opt.max_num_reads);
+		fprintf(stderr, "Current number of reads to be processed: %d\n", references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read);
+		exit(1);
+	}
+
 	// NOTE: opt.no_read_bam has no effect currently
 	printf("Building mismatch matrix...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
