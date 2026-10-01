@@ -94,7 +94,7 @@ int main(int argc, char **argv)
 
 	printf("Reading in SAM results...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	references_data_str.sam_results_str = read_in_sam_results(opt.working_dir, opt.reference_strain_names, opt.num_references);
+	references_data_str.sam_results_str = read_in_sam_results(opt.working_dir, opt.reference_strain_names, opt.num_references, opt.paired);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
