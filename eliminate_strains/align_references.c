@@ -31,7 +31,6 @@ ReferencesData align_references(char *reference_sequences_dir, char **reference_
 
 	char current_reference_filepath[1024];
 	
-
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
 		char *current_strain_name = reference_strain_names[ref_idx];

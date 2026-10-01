@@ -173,11 +173,6 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid non-imputed positions filepath\n");
 			break;	
-		case 's':
-			success = sscanf(optarg, "%s", opt->sam_prefix_filepath);
-			if (!success)
-				fprintf(stderr, "Invalid SAM filepath\n");
-			break;
 		case '0':
 			success = sscanf(optarg, "%s", opt->single_end_filepath);
 			if (!success)
