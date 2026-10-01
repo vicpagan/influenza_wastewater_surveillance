@@ -35,9 +35,9 @@ int parse_sam_flags(int flag_value)
  * @param sam_results_filepath 
  * @return SAMResults 
  */
-SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names, int num_references)
+SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names, int num_references, int using_paired_end_reads)
 {
-	int i, ref_idx;
+	int i, ref_idx, sam_line_idx;
 	char buffer[FASTA_MAXLINE];
 
 	SAMResults sam_results_str;
@@ -78,6 +78,8 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 				}
 
 				num_sam_lines++;
+
+
 			}
 		}
 
@@ -118,5 +120,70 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 
 		gzclose(sam_results_file);
 	}
+
+	int lines_per_read = 1;
+	if (using_paired_end_reads)
+	{
+		lines_per_read = 2;
+	}
+
+	int *read_idx_aligned = (int *)calloc((sam_results_str.num_sam_lines / lines_per_read), sizeof(int));
+
+	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+	{
+		for (sam_line_idx = 0; sam_line_idx < sam_results_str.num_sam_lines; sam_line_idx += lines_per_read)
+		{
+			const char *first_tab = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx], '\t');
+			int parsed_sam_flags = parse_sam_flags(atoi(first_tab + 1));
+			if (parsed_sam_flags == 0 || parsed_sam_flags == 1)
+			{
+				read_idx_aligned[sam_line_idx / lines_per_read] = 1;
+			}
+		}
+	}
+
+	int num_kept_lines = 0;
+	for (sam_line_idx = 0; sam_line_idx < sam_results_str.num_sam_lines; sam_line_idx += lines_per_read)
+	{
+		if (read_idx_aligned[sam_line_idx / lines_per_read] == 0)
+		{
+			for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+			{
+				for (i = 0; i < lines_per_read; i++)
+				{
+					free(sam_results_str.sam_results[ref_idx][sam_line_idx + i]);
+				}
+			}
+		}
+		else
+		{
+			if (num_kept_lines != sam_line_idx)
+			{
+				for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+				{
+					for (i = 0; i < lines_per_read; i++)
+					{
+						sam_results_str.sam_results[ref_idx][num_kept_lines + i] = sam_results_str.sam_results[ref_idx][sam_line_idx + i];
+					}
+				}
+			}
+			num_kept_lines += lines_per_read;
+		}
+	}
+
+	if (num_kept_lines == 0)
+	{
+		fprintf(stderr, "Error: no reads aligned to any reference strain.\n");
+		exit(1);
+	}
+
+	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
+	{
+		sam_results_str.sam_results[ref_idx] = realloc(sam_results_str.sam_results[ref_idx], num_kept_lines * sizeof(char *));
+	}
+	sam_results_str.num_sam_lines = num_kept_lines;
+
+	free(read_idx_aligned);
+
 	return sam_results_str;
 }
