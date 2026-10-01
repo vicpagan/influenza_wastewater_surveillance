@@ -15,8 +15,7 @@
  * @param num_plot 
  * @param num_threads 
  */
-void calculate_proportions(MismatchData *mismatch_data_str, char *output_csv_filepath, double error_rate, double filter, int compute_strain_llr, int compute_site_llr, int num_plot, int num_threads);
-
+void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, int compute_strain_llr, int num_top_strains_llr, int num_plot, int num_threads);
 
 
 #endif
