@@ -16,7 +16,7 @@
  * @param bowtie2_reference_filepaths 
  * @return ReferencesData 
  */
-ReferencesData align_references(char **reference_sequences_filepaths, char *non_imputed_positions_filepath, MSA *msa_str, int num_references)
+ReferencesData align_references(char *reference_sequences_dir, char **reference_strain_names, char *non_imputed_positions_filepath, MSA *msa_str, int num_references)
 {
 	int i, ref_idx, msa_seq_idx, site_idx;
 
@@ -29,12 +29,18 @@ ReferencesData align_references(char **reference_sequences_filepaths, char *non_
 	references_data_str.reference_sequence_lengths = (int *)malloc(num_references * sizeof(int));
 	references_data_str.num_references = num_references;
 
+	char current_reference_filepath[1024];
+	
+
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
+		char *current_strain_name = reference_strain_names[ref_idx];
+		sprintf(current_reference_filepath, "%s/%s.fasta", reference_sequences_dir, current_strain_name);
+
 		gzFile reference_sequence_file;
-		if ((reference_sequence_file = gzopen(reference_sequences_filepaths[ref_idx], "r")) == (gzFile)NULL)
+		if ((reference_sequence_file = gzopen(current_reference_filepath, "r")) == (gzFile)NULL)
 		{
-			fprintf(stderr, "Error! Cannot open reference file '%s'.\n", reference_sequences_filepaths[ref_idx]);
+			fprintf(stderr, "Error! Cannot open file for reference sequence '%s'.\n", current_strain_name);
 			exit(1);
 		}
 

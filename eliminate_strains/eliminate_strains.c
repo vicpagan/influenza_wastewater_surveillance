@@ -12,7 +12,6 @@
 #include "bowtie_alignment.h"
 #include "file_utils.h"
 #include "align_references.h"
-#include "calculate_allele_freq.h"
 #include "build_mismatch_matrix.h"
 #include "calculate_proportions.h"
 
@@ -48,7 +47,7 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &program_start);
 
 	struct timespec tstart = {0, 0}, tend = {0, 0};
-	
+
 	Options opt;
 	opt.paired = 0;
 	opt.em_error = 0.005;
@@ -83,13 +82,13 @@ int main(int argc, char **argv)
 
 	printf("Aligning reference strains...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	ReferencesData references_data_str = align_references(reference_sequences_filepaths, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
+	ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
 	printf("Performing Bowtie2 alignments...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose)
+	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
@@ -136,12 +135,6 @@ int main(int argc, char **argv)
 	free(msa_str.sequences);
 	free(msa_str.sequence_names);
 
-	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
-	{
-		free(reference_sequences_filepaths[ref_idx]);
-	}
-	free(reference_sequences_filepaths);
-
 	printf("Calculating proportions of each strain...\n");
 	calculate_proportions(&mismatch_data_str, opt.output_dir, opt.em_error, opt.llr, opt.num_top_strains_llr, 1, opt.num_threads);
 	
@@ -155,7 +148,7 @@ int main(int argc, char **argv)
 		free(mismatch_data_str.read_names[i]);
 	}
 	free(mismatch_data_str.read_names);
-	free(mismatch_data_str.block_sizes);
+	free(mismatch_data_str.alignment_sizes);
 
 	clock_gettime(CLOCK_MONOTONIC, &program_end);
 	printf("Entire program took %.5fsec\n", ((double)program_end.tv_sec + 1.0e-9 * program_end.tv_nsec) - ((double)program_start.tv_sec + 1.0e-9 * program_start.tv_nsec));
