@@ -14,51 +14,40 @@
 typedef struct Options
 {
 	// MSA, reference, and alignment files
-	char msa_filepath[1000];
-	char non_imputed_positions_filepath[1000];
-	char reference_sequences_dir[1000];
-	char problematic_sites_dir[1000];
+	char msa_filepath[2048];
+	char non_imputed_positions_filepath[2048];
+	char reference_sequences_dir[2048];
+	char bowtie2_indexes_dir[2048];
+	char problematic_sites_dir[2048];
 
 	// SAM file to write/read alignments
-	char sam_prefix_filepath[1000];
+	char sam_prefix_filepath[2048];
 	
 	// read inputs
 	int paired;
 	int fasta_format;
-	int clean_reads;
-	char single_end_filepath[1000];
-	char forward_end_filepath[1000];
-	char reverse_end_filepath[1000];
+	char single_end_filepath[2048];
+	char forward_end_filepath[2048];
+	char reverse_end_filepath[2048];
 
 	// output files
-	char print_counts_filepath[1000];
-	char print_deletions_filepath[1000];
-	char output_dir[1000];
-	char working_dir[1000];
+	char output_dir[2048];
+	char working_dir[2048];
 
 	// algorithm parameters
-	double freq;
 	double em_error;
-	int coverage;
-	double deletion_threshold;
-	int min_strains;
-	int max_strains;
 	int llr;
 	int num_top_strains_llr;
 	int num_references;
+	char **reference_strain_names;
 
-	// clean_reads parameters
-	int end_region_length;
-	double end_region_error_mult;
-	int sequence_length_threshold;
-	int trim_length;
-	int fastq_trimmer_threshold;
+	// debug parameters
 	int verbose;
 	
 	// performance parameters
 	int num_threads;
+	int max_num_reads;
 	int no_read_bam;
-	int remove_identical_sequences;
 } Options;
 
 /**
@@ -131,7 +120,7 @@ typedef struct MismatchData
 
 	char **read_names;
 	char **msa_sequence_names;
-	int *block_sizes;
+	int *alignment_sizes;
 
 	int **mismatch_matrix;
 } MismatchData;

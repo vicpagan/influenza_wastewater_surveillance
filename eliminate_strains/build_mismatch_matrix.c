@@ -296,7 +296,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 		}
 
 		strcpy(mismatch_data_str->read_names[row_idx], readname);
-		mismatch_data_str->block_sizes[row_idx] = best_alignment_size;
+		mismatch_data_str->alignment_sizes[row_idx] = best_alignment_size;
 		if (best_alignment_size != -1) 
 		{
 			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
@@ -486,7 +486,7 @@ void *build_mismatch_matrix_single(void *ptr)
 		}
 
 		strcpy(mismatch_data_str->read_names[row_idx], readname);
-		mismatch_data_str->block_sizes[row_idx] = best_alignment_size;
+		mismatch_data_str->alignment_sizes[row_idx] = best_alignment_size;
 		if (best_alignment_size != -1)
 		{
 			for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
@@ -544,7 +544,7 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 		mismatch_data.msa_sequence_names[msa_seq_idx] = strdup(msa_str->sequence_names[msa_seq_idx]);
 	}
 
-	mismatch_data.block_sizes = (int *)malloc(num_reads * sizeof(int));
+	mismatch_data.alignment_sizes = (int *)malloc(num_reads * sizeof(int));
 
 	mismatch_data.read_names = (char **)malloc(num_reads * sizeof(char *));
 	mismatch_data.mismatch_matrix = (int **)malloc(num_reads * sizeof(int *));
@@ -594,12 +594,12 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	int write_idx = 0;
 	for (int read_idx = 0; read_idx < num_reads; read_idx++)
 	{
-		if (mismatch_data.block_sizes[read_idx] != -1)
+		if (mismatch_data.alignment_sizes[read_idx] != -1)
 		{
 			if (write_idx != read_idx)
 			{
 				mismatch_data.read_names[write_idx] = mismatch_data.read_names[read_idx];
-				mismatch_data.block_sizes[write_idx] = mismatch_data.block_sizes[read_idx];
+				mismatch_data.alignment_sizes[write_idx] = mismatch_data.alignment_sizes[read_idx];
 				mismatch_data.mismatch_matrix[write_idx] = mismatch_data.mismatch_matrix[read_idx];
 			}
 			write_idx++;
@@ -612,7 +612,7 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	}
 	mismatch_data.num_reads = write_idx;
 	mismatch_data.read_names = (char **)realloc(mismatch_data.read_names, write_idx * sizeof(char *));
-	mismatch_data.block_sizes = (int *)realloc(mismatch_data.block_sizes, write_idx * sizeof(int));
+	mismatch_data.alignment_sizes = (int *)realloc(mismatch_data.alignment_sizes, write_idx * sizeof(int));
 	mismatch_data.mismatch_matrix = (int **)realloc(mismatch_data.mismatch_matrix, write_idx * sizeof(int *));
 
 	return mismatch_data;

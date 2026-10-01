@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <getopt.h>
 
 #include "options.h"
@@ -10,36 +11,24 @@ static struct option long_options[] =
 	{"help", no_argument, 0, 'h'},
 	{"MSA-filepath", required_argument, 0, 'i'},
 	{"non-imputed-positions-filepath", required_argument, 0, 'p'},
+	{"reference-sequences-dir", required_argument, 0, 'g'},
+	{"bowtie2-indexes-dir", required_argument, 0, 'b'},
 	{"sam-prefix-filepath", required_argument, 0, 's'},
-	{"freq", required_argument, 0, 'f'},
 	{"output-directory", required_argument, 0, 'o'},
 	{"paired", no_argument, 0, 'P'},
-	{"single_end", required_argument, 0, '0'},
-	{"forward_read", required_argument, 0, '1'},
-	{"reverse_read", required_argument, 0, '2'},
+	{"max-num-reads", required_argument, 0, 'm'},
+	{"single-end-filepath", required_argument, 0, '0'},
+	{"forward-end-filepath", required_argument, 0, '1'},
+	{"reverse-end-filepath", required_argument, 0, '2'},
 	{"EM-error", required_argument, 0, 'e'},
-	{"coverage", required_argument, 0, 'c'},
 	{"fasta", no_argument, 0, 'a'},
 	{"llr", no_argument, 0, 'l'},
 	{"num-top-strains-llr", required_argument, 0, 'z'},
-	{"min", required_argument, 0, 'm'},
-	{"max", required_argument, 0, 'x'},
-	{"print-allele-counts", required_argument, 0, 'b'},
 	{"cores", required_argument, 0, 't'},
-	{"reference-sequences-dir", required_argument, 0, 'g'},
 	{"no-read-sam", no_argument, 0, 'n'},
-	{"print-deletions", required_argument, 0, 'r'},
-	{"threshold-for-deleted-sites", required_argument, 0, 'j'},
-	{"clean-my-reads", no_argument, 0, 'd'},
 	{"num-references", required_argument, 0, 'N'},
-	{"seq-length-threshold", required_argument, 0, 'k'},
-	{"trim-length", required_argument, 0, 'w'},
-	{"fastq-trimmer-threshold", required_argument, 0, 'y'},
-	{"working-dir", required_argument, 0, 'W'},
-	{"end-region-length", required_argument, 0, 'q'},
-	{"end-region-error-multiplier", required_argument, 0, 'u'},
+	{"working-directory", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
-	{"remove-identical", no_argument, 0, 'R'},
 	{0, 0, 0, 0}
 };
 
@@ -50,36 +39,25 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
 	-p, --non-imputed-positions-filepath [REQUIRED,FILE]	Filepath of the non-imputed positions for each strain within the MSA\n\
-	-s, --sam-prefix-filepath [REQUIRED,FILE]		Output sam file to print alignments\n\
-	-f, --freq [REQUIRED,decimal]		Allele frequency to filter unlikely strains [default: 0.01]\n\
-	-o, --output-directory [REQUIRED,FILE]		Output file to print mismatch matrix for EM algorithm\n\
 	-g, --reference-sequences-dir [REQUIRED,DIR]	Directory of reference sequences\n\
+	-b, --bowtie2-indexes-dir [REQUIRED,DIR]	Directory of precomputed bowtie2 indexes for each reference sequence\n\
+	-r, --reference-strains [REQUIRED, NAME NAME ...]	List of the names of reference strains to use (e.g., -r EPI_ISL_19088566 EPI_ISL_19407907 ...)\n\
+	-s, --sam-prefix-filepath [REQUIRED, FILE]		Output sam file to print alignments\n\
+	-o, --output-dir [DIR]		Directory to place output files [default: .]\n\
 	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
 	-P, --paired				Using paired-reads\n\
-	-0, --single_end_file [FILE]		Single-end reads\n\
-	-1, --forward-file [FILE]		If using paired-reads, the forward reads file\n\
-	-2, --reverse-file [FILE]		If using paired-reads, the reverse reads file\n\
+	-m, --max-num-reads [int]	Maximum number of reads from the read file(s) to process [default: 100,000]\n\
+	-0, --single-end-filepath [FILE]		Single-end reads\n\
+	-1, --forward-end-filepath [FILE]		If using paired-reads, the forward reads file\n\
+	-2, --reverse-end-filepath [FILE]		If using paired-reads, the reverse reads file\n\
 	-e, --EM-error [decimal]		Error rate for EM algorithm [default: 0.005]\n\
-	-d, --clean-my-reads                    Clean reads with fastq_quality_trimmer [must have FASTQ reads]\n\
-	-k, --seq-length-threshold [integer]	Minimum read length to keep when cleaning reads [default: 95]\n\
-	-w, --trim-length [integer]		Number of bases to trim from each end when cleaning reads [default: 15]\n\
-	-y, --fastq-trimmer-threshold [integer]	Quality threshold passed to fastq_quality_trimmer [default: 35]\n\
-	-q, --end-region-length [integer]	Number of bases at each read end checked for increased mismatch rate when deciding whether to clean reads [default: 10]\n\
-	-u, --end-region-error-multiplier [decimal]	How many times higher the end error rate must be vs. the middle to trigger cleaning [default: 3.0]\n\
-	-c, --coverage [integer]		Number of reads needed to calculate allele freq [default: 50]\n\
 	-a, --fasta				Reads are in FASTA format [default: FASTQ]\n\
 	-l, --llr				Perform the LLR procedure\n\
 	-z, --num-top-strains-llr [int]	Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
-	-m, --min [decimal]			Minimum strains remaining to invoke iterative procedure [default: 100]\n\
-	-x, --max [decimal]			Maximum strains remaining for EM algorithm [default: 10000]\n\
-	-b, --print-allele-counts [FILE]	Print allele counts to file\n\
 	-t, --cores [decimal]			Number of cores [default: 1]\n\
 	-n, --no-read-sam			Don't read in sam file to memory\n\
-	-r, --print-deletions [FILE]		Print sites with deletions\n\
-	-j, --threshold-for-deleted-sites	Threshold to print deleted sites [default: 0.001]\n\
-	-W, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
+	-w, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
 	-v, --verbose				Show verbose debug output from Bowtie2 commands\n\
-	-R, --remove-identical			Remove identical strains from the MSA before processing\n\
 	\n";
 
 /**
@@ -90,6 +68,54 @@ void print_help_statement()
 {
 	printf("%s", &usage[0]);
 	return;
+}
+
+static void extract_reference_strains_args(int *argc_ptr, char **argv, Options *opt)
+{
+	int argc = *argc_ptr;
+	opt->num_references = 0;
+
+	int i;
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--reference-strains") == 0)
+		{
+			int flag_idx = i;
+			int j = i + 1;
+			int capacity = 16;
+			opt->reference_strain_names = (char **)malloc(capacity * sizeof(char *));
+
+			while (j < argc && argv[j][0] != '-')
+			{
+				if (opt->num_references == capacity)
+				{
+					capacity *= 2;
+					opt->reference_strain_names = (char **)realloc(opt->reference_strain_names, capacity * sizeof(char *));
+				}
+				opt->reference_strain_names[opt->num_references] = strdup(argv[j]);
+				opt->num_references++;
+				j++;
+			}
+
+			if (opt->num_references == 0)
+			{
+				fprintf(stderr, "Error: -r/--reference-strains was given with no strain names after it.\n");
+				exit(1);
+			}
+
+			int num_consumed = j - flag_idx;
+			int k;
+			for (k = flag_idx; k + num_consumed < argc; k++)
+			{
+				argv[k] = argv[k + num_consumed];
+			}
+			argc -= num_consumed;
+
+			i--;
+		}
+	}
+
+	*argc_ptr = argc;
 }
 
 /**
@@ -119,19 +145,6 @@ void parse_options(int argc, char **argv, Options *opt)
 			print_help_statement();
 			exit(0);
 			break;
-		case 'd':
-			opt->clean_reads = 1;
-			break;
-		case 'b':
-			success = sscanf(optarg, "%s", opt->print_counts_filepath);
-			if (!success)
-				fprintf(stderr, "Invalid counts file\n");
-			break;
-		case 'r':
-			success = sscanf(optarg, "%s", opt->print_deletions_filepath);
-			if (!success)
-				fprintf(stderr, "Invalid deletions file\n");
-			break;
 		case 'P':
 			opt->paired = 1;
 			break;
@@ -146,6 +159,11 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid reference sequences directory\n");
 			break;
+		case 'b':
+			success = sscanf(optarg, "%s", opt->bowtie2_indexes_dir);
+			if (!success)
+				fprintf(stderr, "Invalid bowtie2 indexes directory\n");
+			break;	
 		case 'n':
 			opt->no_read_bam = 1;
 			break;
@@ -179,36 +197,16 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid FASTA filepath\n");
 			break;
-		case 'f':
-			success = sscanf(optarg, "%lf", &(opt->freq));
-			if (!success)
-				fprintf(stderr, "Invalid freq\n");
-			break;
-		case 'j':
-			success = sscanf(optarg, "%lf", &(opt->deletion_threshold));
-			if (!success)
-				fprintf(stderr, "Invalid threshold\n");
-			break;
 		case 't':
 			success = sscanf(optarg, "%d", &(opt->num_threads));
 			if (!success)
 				fprintf(stderr, "Invalid number of cores\n");
 			break;
-		case 'c':
-			success = sscanf(optarg, "%d", &(opt->coverage));
-			if (!success)
-				fprintf(stderr, "Invalid freq\n");
-			break;
 		case 'm':
-			success = sscanf(optarg, "%d", &(opt->min_strains));
+			success = sscanf(optarg, "%d", &(opt->max_num_reads));
 			if (!success)
-				fprintf(stderr, "Invalid min strains\n");
-			break;
-		case 'x':
-			success = sscanf(optarg, "%d", &(opt->max_strains));
-			if (!success)
-				fprintf(stderr, "Invalid min strains\n");
-			break;
+				fprintf(stderr, "Invalid maximum number of reads to process\n");
+			break;		
 		case 'e':
 			success = sscanf(optarg, "%lf", &(opt->em_error));
 			if (!success)
@@ -224,41 +222,13 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid number of references\n");
 			break;
-		case 'k':
-			success = sscanf(optarg, "%d", &(opt->sequence_length_threshold));
-			if (!success)
-				fprintf(stderr, "Invalid sequence length threshold\n");
-			break;
 		case 'w':
-			success = sscanf(optarg, "%d", &(opt->trim_length));
-			if (!success)
-				fprintf(stderr, "Invalid trim length\n");
-			break;
-		case 'y':
-			success = sscanf(optarg, "%d", &(opt->fastq_trimmer_threshold));
-			if (!success)
-				fprintf(stderr, "Invalid fastq trimmer threshold\n");
-			break;
-		case 'W':
 			success = sscanf(optarg, "%s", opt->working_dir);
 			if (!success)
 				fprintf(stderr, "Invalid working directory\n");
 			break;
-		case 'q':
-			success = sscanf(optarg, "%d", &(opt->end_region_length));
-			if (!success)
-				fprintf(stderr, "Invalid end region length\n");
-			break;
-		case 'u':
-			success = sscanf(optarg, "%lf", &(opt->end_region_error_mult));
-			if (!success)
-				fprintf(stderr, "Invalid end region error multiplier\n");
-			break;
 		case 'v':
 			opt->verbose = 1;
-			break;
-		case 'R':
-			opt->remove_identical_sequences = 1;
 			break;
 		case 'z':
 			success = sscanf(optarg, "%d", &(opt->num_top_strains_llr));

@@ -201,7 +201,7 @@ double *run_squarem(const double *theta_0, const double **l_matrix, int num_read
     return theta;
 }
 
-void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, double filter, int compute_strain_llr, int num_top_strains_llr, int num_plot, int num_threads)
+void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, double error_rate, int compute_strain_llr, int num_top_strains_llr, int num_plot, int num_threads)
 {
     srand((unsigned int)time(NULL));
 
@@ -461,7 +461,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
         for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
         {
             int mismatches = mismatch_data_str->mismatch_matrix[read_idx][msa_seq_idx];
-            int matches = mismatch_data_str->block_sizes[read_idx] - mismatches;
+            int matches = mismatch_data_str->alignment_sizes[read_idx] - mismatches;
 
             likelihood_matrix[read_idx][msa_seq_idx] = pow(error_rate, mismatches) * pow(1.0 - error_rate, matches);
             if (likelihood_matrix[read_idx][msa_seq_idx] == 0.0)

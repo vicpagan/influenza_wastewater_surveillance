@@ -81,8 +81,7 @@ char **list_sorted_dir_files(char *dir_path, int num_references, char *dir_label
 		exit(1);
 	}
  
-	// sort alphabetically so position i means the same subtype across all
-	// three directories (msa/reference/bowtie2-reference)
+	// sort alphabetically so position i means the same subtype across all directories
 	qsort(filenames, count, sizeof(char *), cmp_str);
  
 	if (count > num_references)

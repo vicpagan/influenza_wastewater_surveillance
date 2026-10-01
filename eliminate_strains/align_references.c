@@ -116,7 +116,6 @@ ReferencesData align_references(char **reference_sequences_filepaths, char *non_
 					if (site_idx != num_positions)
 					{
 						fprintf(stderr, "Error: Not enough positions in non-imputed positions file for reference '%s'.\n", references_data_str.reference_names[ref_idx]);
-						fprintf(stderr, "num_positions = %d, site_idx = %d\n", num_positions, site_idx);
 						exit(1);
 					}
 					processed_strain = 1;

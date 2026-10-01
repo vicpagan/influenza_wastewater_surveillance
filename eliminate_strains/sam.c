@@ -35,7 +35,7 @@ int parse_sam_flags(int flag_value)
  * @param sam_results_filepath 
  * @return SAMResults 
  */
-SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references)
+SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names, int num_references)
 {
 	int i, ref_idx;
 	char buffer[FASTA_MAXLINE];
@@ -44,12 +44,18 @@ SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references)
 	sam_results_str.max_sam_line_length = 0;
 	sam_results_str.sam_results = (char ***)malloc(num_references * sizeof(char **));
 
+	char current_sam_filepath[1024];
+
 	for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 	{
+		char *current_strain_name = reference_strain_names[ref_idx];
+
+		sprintf(current_sam_filepath, "%s/%s.sam", working_dir, current_strain_name);
+
 		gzFile sam_results_file;
-		if ((sam_results_file = gzopen(sam_results_filepaths[ref_idx], "r")) == (gzFile)NULL)
+		if ((sam_results_file = gzopen(current_sam_filepath, "r")) == (gzFile)NULL)
 		{
-			fprintf(stderr, "SAM results file '%s' could not be opened.\n", sam_results_filepaths[ref_idx]);
+			fprintf(stderr, "SAM results file for reference strain '%s' could not be opened.\n", current_strain_name);
 			exit(1);
 		}
 		
@@ -82,7 +88,7 @@ SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references)
 
 		if (sam_results_str.num_sam_lines != num_sam_lines)
 		{
-			fprintf(stderr, "Error: Number of reads in SAM file '%s' is different than previous SAM file '%s'", sam_results_filepaths[ref_idx], sam_results_filepaths[ref_idx - 1]);
+			fprintf(stderr, "Error: Number of reads in SAM file for reference strain '%s' is different than previous reference strain '%s'", current_strain_name, reference_strain_names[ref_idx - 1]);
 			exit(1);
 		}
 		if (sam_results_str.max_sam_line_length < max_sam_line_length)

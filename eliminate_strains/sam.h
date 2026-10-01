@@ -15,11 +15,12 @@ int parse_sam_flags(int flag_value);
 /**
  * @brief 
  * 
- * @param sam_results_filepaths 
+ * @param working_dir 
+ * @param reference_strain_names 
  * @param num_references 
  * @return SAMResults 
  */
-SAMResults read_in_sam_results(char **sam_results_filepaths, int num_references);
+SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names, int num_references);
 
 
 #endif // SAM_H
