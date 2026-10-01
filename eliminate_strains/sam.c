@@ -171,6 +171,8 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 		}
 	}
 
+	printf("DEBUG: Previous num sam lines = %d, num sam lines kept = %d.\n", sam_results_str.num_sam_lines, num_kept_lines);
+
 	if (num_kept_lines == 0)
 	{
 		fprintf(stderr, "Error: no reads aligned to any reference strain.\n");
