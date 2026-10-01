@@ -13,7 +13,6 @@ static struct option long_options[] =
 	{"non-imputed-positions-filepath", required_argument, 0, 'p'},
 	{"reference-sequences-dir", required_argument, 0, 'g'},
 	{"bowtie2-indexes-dir", required_argument, 0, 'b'},
-	{"sam-prefix-filepath", required_argument, 0, 's'},
 	{"output-directory", required_argument, 0, 'o'},
 	{"paired", no_argument, 0, 'P'},
 	{"max-num-reads", required_argument, 0, 'm'},
@@ -26,7 +25,6 @@ static struct option long_options[] =
 	{"num-top-strains-llr", required_argument, 0, 'z'},
 	{"cores", required_argument, 0, 't'},
 	{"no-read-sam", no_argument, 0, 'n'},
-	{"num-references", required_argument, 0, 'N'},
 	{"working-directory", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
 	{0, 0, 0, 0}
@@ -38,26 +36,24 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
-	-p, --non-imputed-positions-filepath [REQUIRED,FILE]	Filepath of the non-imputed positions for each strain within the MSA\n\
-	-g, --reference-sequences-dir [REQUIRED,DIR]	Directory of reference sequences\n\
-	-b, --bowtie2-indexes-dir [REQUIRED,DIR]	Directory of precomputed bowtie2 indexes for each reference sequence\n\
-	-r, --reference-strains [REQUIRED, NAME NAME ...]	List of the names of reference strains to use (e.g., -r EPI_ISL_19088566 EPI_ISL_19407907 ...)\n\
-	-s, --sam-prefix-filepath [REQUIRED, FILE]		Output sam file to print alignments\n\
+	-p, --non-imputed-positions-filepath [REQUIRED,FILE]		Filepath of the non-imputed positions for each strain within the MSA\n\
+	-g, --reference-sequences-dir [REQUIRED,DIR]		Directory of reference sequences\n\
+	-b, --bowtie2-indexes-dir [REQUIRED,DIR]		Directory of precomputed bowtie2 indexes for each reference sequence\n\
+	-r, --reference-strains [REQUIRED, NAME NAME ...]		List of the names of reference strains to use (e.g., -r EPI_ISL_19088566 EPI_ISL_19407907 ...)\n\
 	-o, --output-dir [DIR]		Directory to place output files [default: .]\n\
-	-N, --num-references [REQUIRED,int]	Number of reference strains to use for alignment\n\
-	-P, --paired				Using paired-reads\n\
-	-m, --max-num-reads [int]	Maximum number of reads from the read file(s) to process [default: 100,000]\n\
+	-w, --working-dir [DIR]		Directory for intermediate/working files [default: .]\n\
+	-P, --paired		Using paired-reads\n\
+	-m, --max-num-reads [int]		Maximum number of reads from the read file(s) to process [default: 100,000]\n\
 	-0, --single-end-filepath [FILE]		Single-end reads\n\
 	-1, --forward-end-filepath [FILE]		If using paired-reads, the forward reads file\n\
 	-2, --reverse-end-filepath [FILE]		If using paired-reads, the reverse reads file\n\
 	-e, --EM-error [decimal]		Error rate for EM algorithm [default: 0.005]\n\
-	-a, --fasta				Reads are in FASTA format [default: FASTQ]\n\
-	-l, --llr				Perform the LLR procedure\n\
-	-z, --num-top-strains-llr [int]	Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
-	-t, --cores [decimal]			Number of cores [default: 1]\n\
-	-n, --no-read-sam			Don't read in sam file to memory\n\
-	-w, --working-dir [DIR]			Directory for intermediate/working files [default: .]\n\
-	-v, --verbose				Show verbose debug output from Bowtie2 commands\n\
+	-a, --fasta		Reads are in FASTA format [default: FASTQ]\n\
+	-l, --llr		Perform the LLR procedure\n\
+	-z, --num-top-strains-llr [int]		Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
+	-t, --cores [decimal]		Number of cores [default: 1]\n\
+	-n, --no-read-sam		Don't read in sam file to memory\n\
+	-v, --verbose		Show verbose debug output from Bowtie2 commands\n\
 	\n";
 
 /**
@@ -216,11 +212,6 @@ void parse_options(int argc, char **argv, Options *opt)
 			success = sscanf(optarg, "%s", opt->output_dir);
 			if (!success)
 				fprintf(stderr, "Invalid output directory\n");
-			break;
-		case 'N':
-			success = sscanf(optarg, "%d", &(opt->num_references));
-			if (!success)
-				fprintf(stderr, "Invalid number of references\n");
 			break;
 		case 'w':
 			success = sscanf(optarg, "%s", opt->working_dir);

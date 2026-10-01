@@ -19,9 +19,6 @@ typedef struct Options
 	char reference_sequences_dir[2048];
 	char bowtie2_indexes_dir[2048];
 	char problematic_sites_dir[2048];
-
-	// SAM file to write/read alignments
-	char sam_prefix_filepath[2048];
 	
 	// read inputs
 	int paired;
