@@ -14,50 +14,37 @@
 typedef struct Options
 {
 	// MSA, reference, and alignment files
-	char msa_filepath[1000];
-	char msa_reference_dir[1000];
-	char bowtie2_reference_dir[1000];
-	char problematic_sites_dir[1000];
-
-	// SAM file to write/read alignments
-	char sam_filepath[1000];
+	char msa_filepath[2048];
+	char non_imputed_positions_filepath[2048];
+	char reference_sequences_dir[2048];
+	char bowtie2_indexes_dir[2048];
+	char problematic_sites_dir[2048];
 	
 	// read inputs
 	int paired;
 	int fasta_format;
-	int clean_reads;
-	char single_end_filepath[1000];
-	char forward_end_filepath[1000];
-	char reverse_end_filepath[1000];
+	char single_end_filepath[2048];
+	char forward_end_filepath[2048];
+	char reverse_end_filepath[2048];
 
 	// output files
-	char output_filepath[1000];
-	char print_counts_filepath[1000];
-	char print_deletions_filepath[1000];
-	char working_dir[1000];
+	char output_dir[2048];
+	char working_dir[2048];
 
 	// algorithm parameters
-	double freq;
 	double em_error;
-	int coverage;
-	double deletion_threshold;
-	int min_strains;
-	int max_strains;
 	int llr;
+	int num_top_strains_llr;
 	int num_references;
+	char **reference_strain_names;
 
-	// clean_reads parameters
-	int end_region_length;
-	double end_region_error_mult;
-	int sequence_length_threshold;
-	int trim_length;
-	int fastq_trimmer_threshold;
+	// debug parameters
 	int verbose;
 	
 	// performance parameters
 	int num_threads;
+	int max_num_reads;
 	int no_read_bam;
-	int remove_identical_sequences;
 } Options;
 
 /**
@@ -87,12 +74,16 @@ typedef struct MSA
 // } SAMRecord;
 
 // TODO: Add SAM results filepath for executions where we DONT want the entire SAM file written in
+
+// TODO: Make a single SAMResults struct hold an array of SAMFile structs that hold the actual lines in the file
+// This is because the num sam lines and the max sam line length should be the same value for every SAM file anyway
+// Maybe just use the SAMRecord stuff from above?
 typedef struct SAMResults
 {
 	int num_sam_lines;
 	int max_sam_line_length;
 
-	char **sam_results;
+	char ***sam_results;
 } SAMResults;
 
 
@@ -107,32 +98,60 @@ typedef struct SAMResults
  * @brief 
  * 
  */
-typedef struct ReferenceData
+typedef struct ReferencesData
 {
-	int reference_sequence_index;
-	char *reference_name;
+	int num_references;
+	int *reference_sequence_msa_indexes;
+	char **reference_names;
 
-	int *reference_index;
-	// ProblematicSites problematic_sites_str;
+	int **references_to_msa_positions;
+	int *reference_sequence_lengths;
 	SAMResults sam_results_str;
-} ReferenceData;
+	// ProblematicSites problematic_sites_str;
+} ReferencesData;
+
+typedef struct MismatchData
+{
+	int num_reads;
+	int num_msa_sequences;
+
+	char **read_names;
+	char **msa_sequence_names;
+	int *alignment_sizes;
+
+	int **mismatch_matrix;
+} MismatchData;
 
 /**
  * @brief Struct to hold thread parameters for parallel processing the mismatch matrix
  * 
  */
-typedef struct MismatchMatrixThreadStruct
+typedef struct BuildMismatchMatrixThread
 {
 	int sam_partition_start;
 	int sam_partition_end;
+	int read_strain_offset;
 	int thread_index;
-	int num_references;
 	
-	ReferenceData *reference_data_strs;
+	ReferencesData *references_data_str;
 	MSA *msa_str;
 
-	FILE *outfile;
-	pthread_mutex_t *write_mutex;
-} MismatchMatrixThreadStruct;
+	MismatchData *mismatch_data_str;
+} BuildMismatchMatrixThread;
+
+typedef struct HashmapEntry
+{
+	char *mismatch_column;
+	char *msa_strain_names;
+	int msa_strain_names_length;
+} HashmapEntry;
+
+typedef struct ProportionData
+{
+	int column_index;
+	char *msa_strain_name;
+	double proportion;
+} ProportionData;
+
 
 #endif /* _GLOBAL_ */
