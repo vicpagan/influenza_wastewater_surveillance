@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 
 	if (opt.em_error < 0.001 || opt.em_error > 1)
     {
-        fprintf(stderr, "Error: EM error rate should be in the range (0.001, 1)!\n");
+        fprintf(stderr, "Error: EM error rate must be in the range (0.001, 1)!\n");
         exit(1);
     }
 

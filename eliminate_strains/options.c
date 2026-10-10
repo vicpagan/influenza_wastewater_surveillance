@@ -13,7 +13,7 @@ static struct option long_options[] =
 	{"non-imputed-positions-filepath", required_argument, 0, 'p'},
 	{"reference-sequences-dir", required_argument, 0, 'g'},
 	{"bowtie2-indexes-dir", required_argument, 0, 'b'},
-	{"output-directory", required_argument, 0, 'o'},
+	{"output-dir", required_argument, 0, 'o'},
 	{"paired", no_argument, 0, 'P'},
 	{"max-num-reads", required_argument, 0, 'm'},
 	{"single-end-filepath", required_argument, 0, '0'},
@@ -25,7 +25,7 @@ static struct option long_options[] =
 	{"num-top-strains-llr", required_argument, 0, 'z'},
 	{"cores", required_argument, 0, 't'},
 	{"no-read-sam", no_argument, 0, 'n'},
-	{"working-directory", required_argument, 0, 'w'},
+	{"working-dir", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
 	{0, 0, 0, 0}
 };
@@ -47,12 +47,12 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-0, --single-end-filepath [FILE]		Single-end reads\n\
 	-1, --forward-end-filepath [FILE]		If using paired-reads, the forward reads file\n\
 	-2, --reverse-end-filepath [FILE]		If using paired-reads, the reverse reads file\n\
-	-e, --EM-error [decimal]		Error rate for EM algorithm [default: 0.005]\n\
+	-e, --EM-error [decimal]		Error rate for EM algorithm (must be in the range (0.001, 1)) [default: 0.005]\n\
 	-a, --fasta		Reads are in FASTA format [default: FASTQ]\n\
 	-l, --llr		Perform the LLR procedure\n\
 	-z, --num-top-strains-llr [int]		Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
-	-t, --cores [decimal]		Number of cores [default: 1]\n\
-	-n, --no-read-sam		Don't read in sam file to memory\n\
+	-t, --cores [int]		Number of cores [default: 1]\n\
+	-n, --no-read-sam		Don't read in sam file to memory (currently not working)\n\
 	-v, --verbose		Show verbose debug output from Bowtie2 commands\n\
 	\n";
 
@@ -69,13 +69,18 @@ void print_help_statement()
 static void extract_reference_strains_args(int *argc_ptr, char **argv, Options *opt)
 {
 	int argc = *argc_ptr;
-	opt->num_references = 0;
 
 	int i;
 	for (i = 1; i < argc; i++)
 	{
 		if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--reference-strains") == 0)
 		{
+			if (opt->reference_strain_names != NULL)
+			{
+				fprintf(stderr, "Error: -r/--reference-strains was given more than once; list all strain names after a single -r.\n");
+				exit(1);
+			}
+
 			int flag_idx = i;
 			int j = i + 1;
 			int capacity = 16;
@@ -131,11 +136,21 @@ void parse_options(int argc, char **argv, Options *opt)
 		exit(0);
 	}
 
+	opt->msa_filepath[0] = '\0';
+	opt->non_imputed_positions_filepath[0] = '\0';
+	opt->reference_sequences_dir[0] = '\0';
+	opt->bowtie2_indexes_dir[0] = '\0';
+	opt->single_end_filepath[0] = '\0';
+	opt->forward_end_filepath[0] = '\0';
+	opt->reverse_end_filepath[0] = '\0';
+	opt->reference_strain_names = NULL;
+	opt->num_references = 0;
+
 	extract_reference_strains_args(&argc, argv, opt);
 	
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hPdlna:i:p:s:f:o:0:1:2:e:t:c:m:x:b:g:r:j:N:k:w:y:W:q:u:z:vR", long_options, &option_index);
+		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:v", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -225,5 +240,22 @@ void parse_options(int argc, char **argv, Options *opt)
 				fprintf(stderr, "Invalid number of top strains to compute LLR for\n");
 			break;
 		}
+	}
+
+	if (opt->msa_filepath[0] == '\0' || opt->non_imputed_positions_filepath[0] == '\0' ||
+		opt->reference_sequences_dir[0] == '\0' || opt->bowtie2_indexes_dir[0] == '\0' || opt->num_references == 0)
+	{
+		fprintf(stderr, "Error: -i, -p, -g, -b and -r are all required. Run with -h for usage.\n");
+		exit(1);
+	}
+	if (opt->paired && (opt->forward_end_filepath[0] == '\0' || opt->reverse_end_filepath[0] == '\0'))
+	{
+		fprintf(stderr, "Error: -P requires both -1 and -2.\n");
+		exit(1);
+	}
+	if (!opt->paired && opt->single_end_filepath[0] == '\0')
+	{
+		fprintf(stderr, "Error: single-end mode requires -0 (or use -P with -1 and -2 for paired reads).\n");
+		exit(1);
 	}
 }
