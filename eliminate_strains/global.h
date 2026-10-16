@@ -40,6 +40,7 @@ typedef struct Options
 
 	// debug parameters
 	int verbose;
+	int print_mismatch_matrix;
 	
 	// performance parameters
 	int num_threads;

@@ -27,6 +27,7 @@ static struct option long_options[] =
 	{"no-read-sam", no_argument, 0, 'n'},
 	{"working-dir", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
+	{"print-mismatch-matrix", no_argument, 0, 'd'},
 	{0, 0, 0, 0}
 };
 
@@ -54,6 +55,7 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-t, --cores [int]		Number of cores [default: 1]\n\
 	-n, --no-read-sam		Don't read in sam file to memory (currently not working)\n\
 	-v, --verbose		Show verbose debug output from Bowtie2 commands\n\
+	-d, --print-mismatch-matrix		Print out the contents of the computed mismatch matrix to the output directory\n\
 	\n";
 
 /**
@@ -150,7 +152,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:v", long_options, &option_index);
+		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vd", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -233,6 +235,9 @@ void parse_options(int argc, char **argv, Options *opt)
 			break;
 		case 'v':
 			opt->verbose = 1;
+			break;
+		case 'd':
+			opt->print_mismatch_matrix = 1;
 			break;
 		case 'z':
 			success = sscanf(optarg, "%d", &(opt->num_top_strains_llr));

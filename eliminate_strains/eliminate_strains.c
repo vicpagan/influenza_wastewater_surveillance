@@ -14,6 +14,7 @@
 #include "align_references.h"
 #include "build_mismatch_matrix.h"
 #include "calculate_proportions.h"
+#include "debug.h"
 
 // TODO: reimplement with a new variant-sites-like file format for problematic sites
 // ProblematicSites *read_in_problematic_sites(char **problematic_sites_filepaths, int num_refs){
@@ -148,6 +149,11 @@ int main(int argc, char **argv)
 	}
 	free(msa_str.sequences);
 	free(msa_str.sequence_names);
+
+	if (opt.print_mismatch_matrix)
+	{
+		write_mismatch_matrix(&mismatch_data_str, opt.output_dir);
+	}
 
 	printf("Calculating proportions of each strain...\n");
 	calculate_proportions(&mismatch_data_str, opt.output_dir, opt.em_error, opt.llr, opt.num_top_strains_llr, 1, opt.num_threads);
