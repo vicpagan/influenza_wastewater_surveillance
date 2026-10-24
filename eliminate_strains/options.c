@@ -28,7 +28,7 @@ static struct option long_options[] =
 	{"working-dir", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
 	{"print-mismatch-matrix", no_argument, 0, 'd'},
-	{"input-mismatch-matrix", required_argument, 0, ''}
+	{"input-mismatch-matrix", required_argument, 0, 'x'},
 	{0, 0, 0, 0}
 };
 
