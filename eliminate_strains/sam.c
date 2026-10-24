@@ -139,6 +139,16 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 			{
 				read_idx_aligned[sam_line_idx / lines_per_read] = 1;
 			}
+			else if (lines_per_read == 2)
+			{
+				// like the original implementation, keep pairs with only one mate mapped:
+				// they are counted from the mapped mate alone
+				const char *second_tab = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx + 1], '\t');
+				if (parsed_sam_flags == 2 || parse_sam_flags(atoi(second_tab + 1)) == 2)
+				{
+					read_idx_aligned[sam_line_idx / lines_per_read] = 1;
+				}
+			}
 		}
 	}
 

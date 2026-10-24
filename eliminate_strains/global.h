@@ -6,6 +6,7 @@
 #define FASTA_MAXLINE 30000 // max length of a single line sequence
 #define MAX_CIGAR 1000 // max number of CIGAR operations in an alignment
 #define MAX_READ_LENGTH 1000 // max length of a single read
+#define NUM_COUNTING_STATS 12 // counters kept by build_mismatch_matrix_paired (see build_mismatch_matrix.c)
 
 /**
  * @brief Struct to hold command line options
@@ -137,8 +138,11 @@ typedef struct BuildMismatchMatrixThread
 	
 	ReferencesData *references_data_str;
 	MSA *msa_str;
-
+ 
 	MismatchData *mismatch_data_str;
+ 
+	// how often each counting rule of the original implementation changed a count (paired reads)
+	long long counting_stats[NUM_COUNTING_STATS];
 } BuildMismatchMatrixThread;
 
 typedef struct HashmapEntry
