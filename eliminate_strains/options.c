@@ -23,11 +23,12 @@ static struct option long_options[] =
 	{"fasta", no_argument, 0, 'a'},
 	{"llr", no_argument, 0, 'l'},
 	{"num-top-strains-llr", required_argument, 0, 'z'},
-	{"cores", required_argument, 0, 't'},
+	{"threads", required_argument, 0, 't'},
 	{"no-read-sam", no_argument, 0, 'n'},
 	{"working-dir", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
 	{"print-mismatch-matrix", no_argument, 0, 'd'},
+	{"input-mismatch-matrix", required_argument, 0, ''}
 	{0, 0, 0, 0}
 };
 
@@ -52,10 +53,11 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-a, --fasta		Reads are in FASTA format [default: FASTQ]\n\
 	-l, --llr		Perform the LLR procedure\n\
 	-z, --num-top-strains-llr [int]		Number of highest proportion strains to calculate the per-strain LLR for [default: 10]\n\
-	-t, --cores [int]		Number of cores [default: 1]\n\
+	-t, --threads [int]		Number of cores [default: 1]\n\
 	-n, --no-read-sam		Don't read in sam file to memory (currently not working)\n\
 	-v, --verbose		Show verbose debug output from Bowtie2 commands\n\
 	-d, --print-mismatch-matrix		Print out the contents of the computed mismatch matrix to the output directory\n\
+	-x, --input-mismatch-matrix		Filepath of the precomputed mismatch matrix for debugging\n\
 	\n";
 
 /**
@@ -145,6 +147,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	opt->single_end_filepath[0] = '\0';
 	opt->forward_end_filepath[0] = '\0';
 	opt->reverse_end_filepath[0] = '\0';
+	opt->input_mismatch_matrix_filepath[0] = '\0';
 	opt->reference_strain_names = NULL;
 	opt->num_references = 0;
 
@@ -152,7 +155,7 @@ void parse_options(int argc, char **argv, Options *opt)
 	
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vd", long_options, &option_index);
+		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vdx:", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -243,6 +246,11 @@ void parse_options(int argc, char **argv, Options *opt)
 			success = sscanf(optarg, "%d", &(opt->num_top_strains_llr));
 			if (!success)
 				fprintf(stderr, "Invalid number of top strains to compute LLR for\n");
+			break;
+		case 'x':
+			success = sscanf(optarg, "%s", opt->input_mismatch_matrix_filepath);
+			if (!success)
+				fprintf(stderr, "Invalid input mismatch matrix filepath\n");
 			break;
 		}
 	}

@@ -41,6 +41,7 @@ typedef struct Options
 	// debug parameters
 	int verbose;
 	int print_mismatch_matrix;
+	char input_mismatch_matrix_filepath[2048];
 	
 	// performance parameters
 	int num_threads;

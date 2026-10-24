@@ -73,82 +73,101 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-	printf("Reading in MSA...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	MSA msa_str = read_in_msa(opt.msa_filepath);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
-	printf("MSA sequence length: %d\n\n", msa_str.sequence_length);
-
-	printf("Aligning reference strains...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-
-	printf("Performing Bowtie2 alignments...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-
-	printf("Reading in SAM results...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	references_data_str.sam_results_str = read_in_sam_results(opt.working_dir, opt.reference_strain_names, opt.num_references, opt.paired);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-	printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
-	printf("SAM max line length: %d\n\n", references_data_str.sam_results_str.max_sam_line_length);
-
-	int sam_lines_per_read = 1;
-	if (opt.paired)
+	MismatchData mismatch_data_str;
+	if (opt.input_mismatch_matrix_filepath[0] != '\0')
 	{
-		sam_lines_per_read = 2;
-	}
-
-	if (references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read > opt.max_num_reads)
-	{
-		fprintf(stderr, "Error: Too many aligned reads!\n");
-		fprintf(stderr, "Max number of reads: %d\n", opt.max_num_reads);
-		fprintf(stderr, "Current number of reads to be processed: %d\n", references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read);
-		exit(1);
-	}
-
-	// NOTE: opt.no_read_bam has no effect currently
-	printf("Building mismatch matrix...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	MismatchData mismatch_data_str = build_mismatch_matrix(&references_data_str, &msa_str, opt.paired, opt.num_threads);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
-
-	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
-	{
-		for (i = 0; i < references_data_str.sam_results_str.num_sam_lines; i++)
+		printf("Reading in mismatch matrix %s...\n", opt.input_mismatch_matrix_filepath);
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		mismatch_data_str = read_mismatch_matrix(opt.input_mismatch_matrix_filepath, opt.max_num_reads);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+		printf("Mismatch matrix: %d reads x %d strains\n\n", mismatch_data_str.num_reads, mismatch_data_str.num_msa_sequences);
+		if (mismatch_data_str.num_reads > opt.max_num_reads)
 		{
-			free(references_data_str.sam_results_str.sam_results[ref_idx][i]);
+			fprintf(stderr, "Error: Too many reads in the mismatch matrix!\n");
+			fprintf(stderr, "Max number of reads: %d (raise it with -m)\n", opt.max_num_reads);
+			fprintf(stderr, "Reads in the matrix: %d\n", mismatch_data_str.num_reads);
+			exit(1);
 		}
-		free(references_data_str.sam_results_str.sam_results[ref_idx]);
 	}
-	free(references_data_str.sam_results_str.sam_results);
-
-	for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
+	else
 	{
-		free(references_data_str.references_to_msa_positions[ref_idx]);
-		free(references_data_str.reference_names[ref_idx]);
-	}
-	free(references_data_str.references_to_msa_positions);
-	free(references_data_str.reference_names);
-	free(references_data_str.reference_sequence_msa_indexes);
-	free(references_data_str.reference_sequence_lengths);
+		printf("Reading in MSA...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		MSA msa_str = read_in_msa(opt.msa_filepath);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+		printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
+		printf("MSA sequence length: %d\n\n", msa_str.sequence_length);
 
-	for (i = 0; i < msa_str.num_sequences; i++)
-	{
-		free(msa_str.sequences[i]);
-		free(msa_str.sequence_names[i]);
+		printf("Aligning reference strains...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+		printf("Performing Bowtie2 alignments...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+		printf("Reading in SAM results...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		references_data_str.sam_results_str = read_in_sam_results(opt.working_dir, opt.reference_strain_names, opt.num_references, opt.paired);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+		printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
+		printf("SAM max line length: %d\n\n", references_data_str.sam_results_str.max_sam_line_length);
+
+		int sam_lines_per_read = 1;
+		if (opt.paired)
+		{
+			sam_lines_per_read = 2;
+		}
+
+		if (references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read > opt.max_num_reads)
+		{
+			fprintf(stderr, "Error: Too many aligned reads!\n");
+			fprintf(stderr, "Max number of reads: %d\n", opt.max_num_reads);
+			fprintf(stderr, "Current number of reads to be processed: %d\n", references_data_str.sam_results_str.num_sam_lines / sam_lines_per_read);
+			exit(1);
+		}
+
+		printf("Building mismatch matrix...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		mismatch_data_str = build_mismatch_matrix(&references_data_str, &msa_str, opt.paired, opt.num_threads);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+		for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
+		{
+			for (i = 0; i < references_data_str.sam_results_str.num_sam_lines; i++)
+			{
+				free(references_data_str.sam_results_str.sam_results[ref_idx][i]);
+			}
+			free(references_data_str.sam_results_str.sam_results[ref_idx]);
+		}
+		free(references_data_str.sam_results_str.sam_results);
+
+		for (ref_idx = 0; ref_idx < opt.num_references; ref_idx++)
+		{
+			free(references_data_str.references_to_msa_positions[ref_idx]);
+			free(references_data_str.reference_names[ref_idx]);
+		}
+		free(references_data_str.references_to_msa_positions);
+		free(references_data_str.reference_names);
+		free(references_data_str.reference_sequence_msa_indexes);
+		free(references_data_str.reference_sequence_lengths);
+
+		for (i = 0; i < msa_str.num_sequences; i++)
+		{
+			free(msa_str.sequences[i]);
+			free(msa_str.sequence_names[i]);
+		}
+		free(msa_str.sequences);
+		free(msa_str.sequence_names);
 	}
-	free(msa_str.sequences);
-	free(msa_str.sequence_names);
 
 	if (opt.print_mismatch_matrix)
 	{
