@@ -78,8 +78,6 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 				}
 
 				num_sam_lines++;
-
-
 			}
 		}
 
@@ -133,9 +131,27 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 	{
 		for (sam_line_idx = 0; sam_line_idx < sam_results_str.num_sam_lines; sam_line_idx += lines_per_read)
 		{
-			const char *first_tab = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx], '\t');
-			int parsed_sam_flags = parse_sam_flags(atoi(first_tab + 1));
-			if (parsed_sam_flags == 0 || parsed_sam_flags == 1)
+			const char *first_tab_read_1 = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx], '\t');
+			int parsed_sam_flags_read_1 = parse_sam_flags(atoi(first_tab_read_1 + 1));
+			
+			int read_1_aligned = 0;
+			if (parsed_sam_flags_read_1 != -1)
+			{
+				read_1_aligned = 1;
+			}
+
+			int read_2_aligned = 0;
+			if (using_paired_end_reads)
+			{
+				const char *first_tab_read_2 = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx + 1], '\t');
+				int parsed_sam_flags_read_2 = parse_sam_flags(atoi(first_tab_read_2 + 1));
+				if (parsed_sam_flags_read_2 != -1)
+				{
+					read_2_aligned = 1;
+				}
+			}
+
+			if (read_1_aligned || read_2_aligned)
 			{
 				read_idx_aligned[sam_line_idx / lines_per_read] = 1;
 			}

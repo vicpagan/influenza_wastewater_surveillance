@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <assert.h>
 #include <pthread.h>
+#include <float.h>
 
 #include "build_mismatch_matrix.h"
 #include "sam.h"
@@ -13,12 +14,11 @@
 
 void *build_mismatch_matrix_paired(void *ptr)
 {
-	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
+	int j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
 	BuildMismatchMatrixThread *bmm_thread_str = (BuildMismatchMatrixThread *)ptr;
 	int sam_partition_start = bmm_thread_str->sam_partition_start;
 	int sam_partition_end = bmm_thread_str->sam_partition_end;
-	int thread_id = bmm_thread_str->thread_index;
 
 	ReferencesData *references_data_str = bmm_thread_str->references_data_str;
 	int num_references = references_data_str->num_references;
@@ -62,10 +62,8 @@ void *build_mismatch_matrix_paired(void *ptr)
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx = sam_line_idx + 2)
 	{
 		int row_idx = bmm_thread_str->read_strain_offset + ((sam_line_idx - sam_partition_start) / 2);
-		int best_reference_mismatch = INT32_MAX;
+		double best_reference_mismatch_ratio = DBL_MAX;
 		int best_alignment_size = -1;
-
-		// printf("DEBUG: Thread %d working on read row %d\n", thread_id, row_idx);
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
 		{
@@ -97,122 +95,131 @@ void *build_mismatch_matrix_paired(void *ptr)
 				strcpy(readname, first_sam_fields[0]);
 			}
 
+			int current_alignment_size = 0;
+
 			int first_status = parse_sam_flags(atoi(first_sam_fields[1]));
-			if (first_status == 0 || first_status == 1)
+			int second_status = parse_sam_flags(atoi(second_sam_fields[1]));
+
+			if (first_status != -1 || second_status != -1)
 			{
-				int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
-				int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
-
-				strcpy(first_sam_line_cigar, first_sam_fields[5]);
-
-				int first_num_cigar_chars = 0;
-				int cigar_counter = 0;
-				int index = 0;
-				for (j = 0; first_sam_line_cigar[j] != '\0'; j++)
-				{
-					if (isdigit(first_sam_line_cigar[j]))
-					{
-						int digit = first_sam_line_cigar[j] - '0';
-						cigar_counter = cigar_counter * 10 + digit;
-					}
-					else
-					{
-						first_cigar_vals[index] = cigar_counter;
-						first_cigar_chars[index] = first_sam_line_cigar[j];
-						first_num_cigar_chars++;
-
-						index++;
-						cigar_counter = 0;
-					}
-				}
-				strcpy(first_sequence, first_sam_fields[9]);
-
-				strcpy(second_sam_line_cigar, second_sam_fields[5]);
-
-				int second_num_cigar_chars = 0;
-				cigar_counter = 0;
-				index = 0;
-				for (j = 0; second_sam_line_cigar[j] != '\0'; j++)
-				{
-					if (isdigit(second_sam_line_cigar[j]))
-					{
-						int digit = second_sam_line_cigar[j] - '0';
-						cigar_counter = cigar_counter * 10 + digit;
-					}
-					else
-					{
-						second_cigar_vals[index] = cigar_counter;
-						second_cigar_chars[index] = second_sam_line_cigar[j];
-						second_num_cigar_chars++;
-
-						index++;
-						cigar_counter = 0;
-					}
-				}
-				strcpy(second_sequence, second_sam_fields[9]);
-
-				int current_alignment_size = 0;
-
 				int first_index = 0;
-				int first_sequence_offset = 0;
-				int first_reference_offset = 0;
-				for (j = 0; j < first_num_cigar_chars; j++)
+				if (first_status != -1)
 				{
-					for (k = 0; k < first_cigar_vals[j]; k++)
-					{
-						int first_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][first_sequence_start_pos + first_reference_offset];
+					int first_sequence_start_pos = atoi(first_sam_fields[3]) - 1;
 
-						if (first_cigar_chars[j] == 'M')
+					strcpy(first_sam_line_cigar, first_sam_fields[5]);
+
+					int first_num_cigar_chars = 0;
+					int cigar_counter = 0;
+					int index = 0;
+					for (j = 0; first_sam_line_cigar[j] != '\0'; j++)
+					{
+						if (isdigit(first_sam_line_cigar[j]))
 						{
-							if (first_pos_in_msa != -1)
+							int digit = first_sam_line_cigar[j] - '0';
+							cigar_counter = cigar_counter * 10 + digit;
+						}
+						else
+						{
+							first_cigar_vals[index] = cigar_counter;
+							first_cigar_chars[index] = first_sam_line_cigar[j];
+							first_num_cigar_chars++;
+
+							index++;
+							cigar_counter = 0;
+						}
+					}
+					strcpy(first_sequence, first_sam_fields[9]);
+
+					int first_sequence_offset = 0;
+					int first_reference_offset = 0;
+					for (j = 0; j < first_num_cigar_chars; j++)
+					{
+						for (k = 0; k < first_cigar_vals[j]; k++)
+						{
+							if (first_cigar_chars[j] == 'M')
 							{
-								first_msa_positions[first_index] = first_pos_in_msa;
-								first_bases[first_index] = toupper(first_sequence[first_sequence_offset]);
-								first_index++;
+								int first_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][first_sequence_start_pos + first_reference_offset];
+
+								if (first_pos_in_msa != -1)
+								{
+									first_msa_positions[first_index] = first_pos_in_msa;
+									first_bases[first_index] = toupper(first_sequence[first_sequence_offset]);
+									first_index++;
+								}
+								first_sequence_offset++;
+								first_reference_offset++;
+								current_alignment_size++;
 							}
-							first_sequence_offset++;
-							first_reference_offset++;
-							current_alignment_size++;
-						}
-						else if (first_cigar_chars[j] == 'I' || first_cigar_chars[j] == 'S')
-						{
-							first_sequence_offset++;
-						}
-						else if (first_cigar_chars[j] == 'D')
-						{
-							first_reference_offset++;
+							else if (first_cigar_chars[j] == 'I' || first_cigar_chars[j] == 'S')
+							{
+								first_sequence_offset++;
+							}
+							else if (first_cigar_chars[j] == 'D')
+							{
+								first_reference_offset++;
+							}
 						}
 					}
 				}
 
 				int second_index = 0;
-				int second_sequence_offset = 0;
-				int second_reference_offset = 0;
-				for (j = 0; j < second_num_cigar_chars; j++)
+				if (second_status != -1)
 				{
-					for (k = 0; k < second_cigar_vals[j]; k++)
-					{
-						int second_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][second_sequence_start_pos + second_reference_offset];
+					int second_sequence_start_pos = atoi(second_sam_fields[3]) - 1;
 
-						if (second_cigar_chars[j] == 'M')
+					strcpy(second_sam_line_cigar, second_sam_fields[5]);
+
+					int second_num_cigar_chars = 0;
+					int cigar_counter = 0;
+					int index = 0;
+					for (j = 0; second_sam_line_cigar[j] != '\0'; j++)
+					{
+						if (isdigit(second_sam_line_cigar[j]))
 						{
-							if (second_pos_in_msa != -1)
+							int digit = second_sam_line_cigar[j] - '0';
+							cigar_counter = cigar_counter * 10 + digit;
+						}
+						else
+						{
+							second_cigar_vals[index] = cigar_counter;
+							second_cigar_chars[index] = second_sam_line_cigar[j];
+							second_num_cigar_chars++;
+
+							index++;
+							cigar_counter = 0;
+						}
+					}
+					strcpy(second_sequence, second_sam_fields[9]);
+				
+					int second_sequence_offset = 0;
+					int second_reference_offset = 0;
+					for (j = 0; j < second_num_cigar_chars; j++)
+					{
+						for (k = 0; k < second_cigar_vals[j]; k++)
+						{
+							if (second_cigar_chars[j] == 'M')
 							{
-								second_msa_positions[second_index] = second_pos_in_msa;
-								second_bases[second_index] = toupper(second_sequence[second_sequence_offset]);
-								second_index++;
+								int second_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][second_sequence_start_pos + second_reference_offset];
+
+								if (second_pos_in_msa != -1)
+								{
+									second_msa_positions[second_index] = second_pos_in_msa;
+									second_bases[second_index] = toupper(second_sequence[second_sequence_offset]);
+									second_index++;
+								}
+								second_sequence_offset++;
+								second_reference_offset++;
+								current_alignment_size++;
 							}
-							second_sequence_offset++;
-							second_reference_offset++;
-							current_alignment_size++;
-						}
-						else if (second_cigar_chars[j] == 'I' || second_cigar_chars[j] == 'S')
-						{
-							second_sequence_offset++;
-						}
-						else if (second_cigar_chars[j] == 'D')
-						{
-							second_reference_offset++;
+							else if (second_cigar_chars[j] == 'I' || second_cigar_chars[j] == 'S')
+							{
+								second_sequence_offset++;
+							}
+							else if (second_cigar_chars[j] == 'D')
+							{
+								second_reference_offset++;
+							}
 						}
 					}
 				}
@@ -273,20 +280,22 @@ void *build_mismatch_matrix_paired(void *ptr)
 						if (merged_msa_positions[j] < msa_sequence_length)
 						{
 							char msa_seq_base = msa_sequences[msa_seq_idx][merged_msa_positions[j]];
-							if (msa_seq_base != merged_bases[j] && msa_seq_base != '-' && msa_seq_base != '\0')
+							char merged_base = merged_bases[j];
+							if ((merged_base == 'A' || merged_base == 'C' || merged_base == 'G' || merged_base == 'T') && msa_seq_base != merged_base && msa_seq_base != '-' && msa_seq_base != '\0')
 							{
 								nm++;
 							}
-						}
+						}                                                                                                                                                   
 					}
 					current_mismatch_matrix_row[msa_seq_idx] = nm;
 				}
 
 				int current_reference_mismatch = current_mismatch_matrix_row[references_data_str->reference_sequence_msa_indexes[ref_idx]];
-				if (current_reference_mismatch < best_reference_mismatch)
+				double current_reference_mismatch_ratio = (double)current_reference_mismatch / (double)current_alignment_size;
+				if (current_reference_mismatch_ratio < best_reference_mismatch_ratio)
 				{
-					best_reference_mismatch = current_reference_mismatch;
 					best_alignment_size = current_alignment_size;
+					best_reference_mismatch_ratio = current_reference_mismatch_ratio;
 					for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 					{
 						best_mismatch_matrix_row[msa_seq_idx] = current_mismatch_matrix_row[msa_seq_idx];
@@ -331,7 +340,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 
 void *build_mismatch_matrix_single(void *ptr)
 {
-	int i, j, k, ref_idx, sam_line_idx, msa_seq_idx;
+	int j, k, ref_idx, sam_line_idx, msa_seq_idx;
 
 	BuildMismatchMatrixThread *bmm_thread_str = (BuildMismatchMatrixThread *)ptr;
 	int sam_partition_start = bmm_thread_str->sam_partition_start;
@@ -369,7 +378,7 @@ void *build_mismatch_matrix_single(void *ptr)
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx++)
 	{
 		int row_idx = bmm_thread_str->read_strain_offset + (sam_line_idx - sam_partition_start);
-		int best_reference_mismatch = INT32_MAX;
+		double best_reference_mismatch_ratio = DBL_MAX;
 		int best_alignment_size = -1;
 
 		for (ref_idx = 0; ref_idx < num_references; ref_idx++)
@@ -429,10 +438,10 @@ void *build_mismatch_matrix_single(void *ptr)
 				{
 					for (k = 0; k < cigar_vals[j]; k++)
 					{
-						int pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][sequence_start_pos + reference_offset];
-
 						if (cigar_chars[j] == 'M')
 						{
+							int pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][sequence_start_pos + reference_offset];
+							
 							if (pos_in_msa != -1)
 							{
 								msa_positions[msa_index] = pos_in_msa;
@@ -463,7 +472,8 @@ void *build_mismatch_matrix_single(void *ptr)
 						if (msa_positions[j] < msa_sequence_length)
 						{
 							char msa_seq_base = msa_sequences[msa_seq_idx][msa_positions[j]];
-							if (msa_seq_base != bases[j] && msa_seq_base != '-' && msa_seq_base != '\0')
+							char base = bases[j];
+							if ((base == 'A' || base == 'C' || base == 'G' || base == 'T') && msa_seq_base != base && msa_seq_base != '-' && msa_seq_base != '\0')
 							{
 								nm++;
 							}
@@ -473,10 +483,11 @@ void *build_mismatch_matrix_single(void *ptr)
 				}
 
 				int current_reference_mismatch = current_mismatch_matrix_row[references_data_str->reference_sequence_msa_indexes[ref_idx]];
-				if (current_reference_mismatch < best_reference_mismatch)
+				double current_reference_mismatch_ratio = (double)current_reference_mismatch / (double)current_alignment_size;
+				if (current_reference_mismatch_ratio < best_reference_mismatch_ratio)
 				{
-					best_reference_mismatch = current_reference_mismatch;
 					best_alignment_size = current_alignment_size;
+					best_reference_mismatch_ratio = current_reference_mismatch_ratio;
 					for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
 					{
 						best_mismatch_matrix_row[msa_seq_idx] = current_mismatch_matrix_row[msa_seq_idx];
@@ -512,7 +523,7 @@ void *build_mismatch_matrix_single(void *ptr)
 
 MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa_str, int paired, int num_threads)
 {
-	int i, ref_idx, msa_seq_idx;
+	int i, msa_seq_idx;
 
 	int num_references = references_data_str->num_references;
 	int num_sam_lines = references_data_str->sam_results_str.num_sam_lines;
@@ -590,30 +601,31 @@ MismatchData build_mismatch_matrix(ReferencesData *references_data_str, MSA *msa
 	free(pthreads);
 	free(bmm_thread_strs);
 
-	// remove reads that did not align to any reference
-	int write_idx = 0;
-	for (int read_idx = 0; read_idx < num_reads; read_idx++)
-	{
-		if (mismatch_data.alignment_sizes[read_idx] != -1)
-		{
-			if (write_idx != read_idx)
-			{
-				mismatch_data.read_names[write_idx] = mismatch_data.read_names[read_idx];
-				mismatch_data.alignment_sizes[write_idx] = mismatch_data.alignment_sizes[read_idx];
-				mismatch_data.mismatch_matrix[write_idx] = mismatch_data.mismatch_matrix[read_idx];
-			}
-			write_idx++;
-		}
-		else
-		{
-			free(mismatch_data.read_names[read_idx]);
-			free(mismatch_data.mismatch_matrix[read_idx]);
-		}
-	}
-	mismatch_data.num_reads = write_idx;
-	mismatch_data.read_names = (char **)realloc(mismatch_data.read_names, write_idx * sizeof(char *));
-	mismatch_data.alignment_sizes = (int *)realloc(mismatch_data.alignment_sizes, write_idx * sizeof(int));
-	mismatch_data.mismatch_matrix = (int **)realloc(mismatch_data.mismatch_matrix, write_idx * sizeof(int *));
+	// // remove reads that did not align to any reference
+	// // NOTE: This should already be taken care of by the code in sam.c -- leaving here just in case
+	// int write_idx = 0;
+	// for (int read_idx = 0; read_idx < num_reads; read_idx++)
+	// {
+	// 	if (mismatch_data.alignment_sizes[read_idx] != -1)
+	// 	{
+	// 		if (write_idx != read_idx)
+	// 		{
+	// 			mismatch_data.read_names[write_idx] = mismatch_data.read_names[read_idx];
+	// 			mismatch_data.alignment_sizes[write_idx] = mismatch_data.alignment_sizes[read_idx];
+	// 			mismatch_data.mismatch_matrix[write_idx] = mismatch_data.mismatch_matrix[read_idx];
+	// 		}
+	// 		write_idx++;
+	// 	}
+	// 	else
+	// 	{
+	// 		free(mismatch_data.read_names[read_idx]);
+	// 		free(mismatch_data.mismatch_matrix[read_idx]);
+	// 	}
+	// }
+	// mismatch_data.num_reads = write_idx;
+	// mismatch_data.read_names = (char **)realloc(mismatch_data.read_names, write_idx * sizeof(char *));
+	// mismatch_data.alignment_sizes = (int *)realloc(mismatch_data.alignment_sizes, write_idx * sizeof(int));
+	// mismatch_data.mismatch_matrix = (int **)realloc(mismatch_data.mismatch_matrix, write_idx * sizeof(int *));
 
 	return mismatch_data;
 }
