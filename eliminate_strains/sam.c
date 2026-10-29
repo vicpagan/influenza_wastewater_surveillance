@@ -187,7 +187,8 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 		}
 	}
 
-	// printf("DEBUG: Previous num sam lines = %d, num sam lines kept = %d.\n", sam_results_str.num_sam_lines, num_kept_lines);
+	printf("Input number of reads = %d\n", sam_results_str.num_sam_lines);
+	printf("Number of reads kept = %d\n", num_kept_lines);
 
 	if (num_kept_lines == 0)
 	{
