@@ -557,7 +557,7 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     fprintf(output_proportions_file, "names.arg,p\n");
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
-        fprintf(output_proportions_file, "\"%s\",%.7f\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
+        fprintf(output_proportions_file, "\"%s\",%.17g\n", proportions_data[msa_seq_idx].msa_strain_name, proportions_data[msa_seq_idx].proportion);
     }
 
     fclose(output_proportions_file);
