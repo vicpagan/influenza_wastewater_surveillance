@@ -133,7 +133,7 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 		{
 			const char *first_tab_read_1 = strchr(sam_results_str.sam_results[ref_idx][sam_line_idx], '\t');
 			int parsed_sam_flags_read_1 = parse_sam_flags(atoi(first_tab_read_1 + 1));
-			
+
 			int read_1_aligned = 0;
 			if (parsed_sam_flags_read_1 != -1)
 			{
@@ -187,7 +187,7 @@ SAMResults read_in_sam_results(char *working_dir, char **reference_strain_names,
 		}
 	}
 
-	printf("DEBUG: Previous num sam lines = %d, num sam lines kept = %d.\n", sam_results_str.num_sam_lines, num_kept_lines);
+	// printf("DEBUG: Previous num sam lines = %d, num sam lines kept = %d.\n", sam_results_str.num_sam_lines, num_kept_lines);
 
 	if (num_kept_lines == 0)
 	{
