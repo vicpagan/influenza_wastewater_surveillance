@@ -22,7 +22,7 @@
  * @param using_fasta_format 
  * @param verbose 
  */
-void perform_bowtie_alignments(char *reference_sequences_dir, char* bowtie2_indexes_dir, char **reference_strain_names, int num_references, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int verbose)
+void perform_bowtie_alignments(char *reference_sequences_dir, char* bowtie2_indexes_dir, char **reference_strain_names, int num_references, char *single_end_filepath, char *forward_end_filepath, char *reverse_end_filepath, char *working_dir, int using_paired_end_reads, int using_fasta_format, int num_threads, int verbose)
 {
 	int ref_idx;
 	char *buffer = (char *)calloc(FASTA_MAXLINE, sizeof(char));
@@ -68,19 +68,19 @@ void perform_bowtie_alignments(char *reference_sequences_dir, char* bowtie2_inde
 		
 		if (using_paired_end_reads && using_fasta_format)
 		{
-			sprintf(buffer, "bowtie2 --all%s -f -x %s -1 %s -2 %s -S %s", quiet_flag, current_index_prefix, forward_end_filepath, reverse_end_filepath, current_sam_filepath);
+			sprintf(buffer, "bowtie2 --all%s -f -p %d --reorder -x %s -1 %s -2 %s -S %s", quiet_flag, num_threads, current_index_prefix, forward_end_filepath, reverse_end_filepath, current_sam_filepath);
 		}
 		else if (!using_paired_end_reads && using_fasta_format)
 		{
-			sprintf(buffer, "bowtie2 --all%s -f -x %s -U %s -S %s", quiet_flag, current_index_prefix, single_end_filepath, current_sam_filepath);
+			sprintf(buffer, "bowtie2 --all%s -f -p %d --reorder -x %s -U %s -S %s", quiet_flag, num_threads, current_index_prefix, single_end_filepath, current_sam_filepath);
 		}
 		else if (using_paired_end_reads && !using_fasta_format)
 		{
-			sprintf(buffer, "bowtie2 --all%s -x %s -1 %s -2 %s -S %s", quiet_flag, current_index_prefix, forward_end_filepath, reverse_end_filepath, current_sam_filepath);
+			sprintf(buffer, "bowtie2 --all%s -p %d --reorder -x %s -1 %s -2 %s -S %s", quiet_flag, num_threads, current_index_prefix, forward_end_filepath, reverse_end_filepath, current_sam_filepath);
 		}
 		else
 		{
-			sprintf(buffer, "bowtie2 --all%s -x %s -U %s -S %s", quiet_flag, current_index_prefix, single_end_filepath, current_sam_filepath);
+			sprintf(buffer, "bowtie2 --all%s -p %d --reorder -x %s -U %s -S %s", quiet_flag, num_threads, current_index_prefix, single_end_filepath, current_sam_filepath);
 		}
 		system(buffer);
 	}

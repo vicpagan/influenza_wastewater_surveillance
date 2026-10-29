@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 
 	printf("Performing Bowtie2 alignments...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.verbose);
+	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.num_threads, opt.verbose);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 
