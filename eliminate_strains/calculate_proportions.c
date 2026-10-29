@@ -408,7 +408,6 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     num_msa_sequences = new_num_msa_sequences;
     free(columns_to_remove);
 
-
     char unidentifiable_strains_path[4096];
     snprintf(unidentifiable_strains_path, sizeof(unidentifiable_strains_path), "%s/unidentifiable_strains.txt", output_dir);
 
@@ -478,8 +477,6 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     ////////////////////////////////////////////////////////////////////
 
     double *theta_0 = (double *)malloc(num_msa_sequences * sizeof(double));
-    double *theta_0_rand = (double *)malloc(num_msa_sequences * sizeof(double));
-
     double theta_0_sum = 0.0;
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
     {
@@ -496,16 +493,18 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
         theta_0[msa_seq_idx] /= theta_0_sum;
     }
 
-    double theta_0_rand_sum = 0.0;
-    for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-    {
-        theta_0_rand[msa_seq_idx] = (double)rand() / ((double)RAND_MAX + 1.0);
-        theta_0_rand_sum += theta_0_rand[msa_seq_idx];
-    }
-    for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
-    {
-        theta_0_rand[msa_seq_idx] /= theta_0_rand_sum;
-    }
+    // NOTE: debug stuff
+    // double *theta_0_rand = (double *)malloc(num_msa_sequences * sizeof(double));
+    // double theta_0_rand_sum = 0.0;
+    // for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+    // {
+    //     theta_0_rand[msa_seq_idx] = (double)rand() / ((double)RAND_MAX + 1.0);
+    //     theta_0_rand_sum += theta_0_rand[msa_seq_idx];
+    // }
+    // for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
+    // {
+    //     theta_0_rand[msa_seq_idx] /= theta_0_rand_sum;
+    // }
 
     ////////////////////////////////////////////////////////////////////
     /////////////////////////// SQUAREM RUNS ///////////////////////////
@@ -514,25 +513,33 @@ void calculate_proportions(MismatchData *mismatch_data_str, char *output_dir, do
     printf("Starting SQUAREM step...\n");
 	clock_gettime(CLOCK_MONOTONIC, &start);
     double *proportions = run_squarem(theta_0, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
-    double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
+    // NOTE: debug stuff
+    // double *proportions_rand = run_squarem(theta_0_rand, likelihood_matrix, num_reads, num_msa_sequences, num_threads);
     clock_gettime(CLOCK_MONOTONIC, &end);
     printf("Took %.5fsec\n", ((double)end.tv_sec + 1.0e-9 * end.tv_nsec) - ((double)start.tv_sec + 1.0e-9 * start.tv_nsec));
 
-    if (!proportions || !proportions_rand)
+    if (!proportions)
     {
         fprintf(stderr, "Error: SQUAREM algorithm failed!\n");
         exit(1);
     }
 
-    double difference = 0.0;
-    for (int i = 0; i < num_msa_sequences; ++i)
-    {
-        difference += fabs(proportions[i] - proportions_rand[i]);
-    }
-    printf("Difference between two optimizations from different starting points %.2g\n", difference);\
-
-    free(theta_0_rand);
-    free(proportions_rand);
+    // NOTE: debug stuff
+    // if (!proportions_rand)
+    // {
+    //     fprintf(stderr, "Error: SQUAREM algorithm failed!\n");
+    //     exit(1);
+    // }
+    //
+    // double difference = 0.0;
+    // for (int i = 0; i < num_msa_sequences; ++i)
+    // {
+    //     difference += fabs(proportions[i] - proportions_rand[i]);
+    // }
+    // printf("Difference between two optimizations from different starting points %.2g\n", difference);\
+    //
+    // free(theta_0_rand);
+    // free(proportions_rand);
 
     ProportionData *proportions_data = (ProportionData *)malloc(num_msa_sequences * sizeof(ProportionData));
     for (msa_seq_idx = 0; msa_seq_idx < num_msa_sequences; msa_seq_idx++)
