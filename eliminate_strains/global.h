@@ -38,6 +38,11 @@ typedef struct Options
 	int num_references;
 	char **reference_strain_names;
 
+	// choosing the reference strains from the reads (minimap2 all-to-all alignment + greedy cover)
+	char redundant_groups_filepath[2048]; // empty: strains that are members of a group cannot be chosen
+	char minimap2_args[2048];
+	int min_strains_per_read;
+
 	// debug parameters
 	int verbose;
 	int print_mismatch_matrix;
@@ -62,6 +67,18 @@ typedef struct MSA
 	char **sequence_names;
 
 } MSA;
+
+/**
+ * @brief Strains that share an MSA row because they are identical after imputation.
+ * Sorted by member name; group_names[i] is the name of the MSA row of member_names[i].
+ */
+typedef struct RedundantGroups
+{
+	int num_members;
+	int num_groups;
+	char **member_names;
+	char **group_names;
+} RedundantGroups;
 
 // TODO: Future improvement - instead of storing the entire SAM lines and parsing them when calculating the mismatch, just store the important parts
 // typedef struct SAMRecord

@@ -7,6 +7,7 @@
 
 #include "align_references.h"
 #include "file_utils.h"
+#include "redundant_groups.h"
 
 /**
  * @brief 
@@ -16,7 +17,7 @@
  * @param bowtie2_reference_filepaths 
  * @return ReferencesData 
  */
-ReferencesData align_references(char *reference_sequences_dir, char **reference_strain_names, char *non_imputed_positions_filepath, MSA *msa_str, int num_references)
+ReferencesData align_references(char *reference_sequences_dir, char **reference_strain_names, char *non_imputed_positions_filepath, MSA *msa_str, RedundantGroups *redundant_groups, int num_references)
 {
 	int i, ref_idx, msa_seq_idx, site_idx;
 
@@ -73,6 +74,25 @@ ReferencesData align_references(char *reference_sequences_dir, char **reference_
 				references_data_str.reference_sequence_msa_indexes[ref_idx] = msa_seq_idx;
 			}
 			msa_seq_idx++;
+		}
+
+		// a member of a group of redundant strains has no MSA row of its own: its row is its group's row
+		// (its positions entry below is still its own)
+		const char *group_name = NULL;
+		if (references_data_str.reference_sequence_msa_indexes[ref_idx] == -1)
+		{
+			group_name = find_group_of_strain(redundant_groups, references_data_str.reference_names[ref_idx]);
+		}
+		if (group_name != NULL)
+		{
+			for (msa_seq_idx = 0; msa_seq_idx < msa_str->num_sequences; msa_seq_idx++)
+			{
+				if (strcmp(group_name, msa_str->sequence_names[msa_seq_idx]) == 0)
+				{
+					references_data_str.reference_sequence_msa_indexes[ref_idx] = msa_seq_idx;
+					break;
+				}
+			}
 		}
 
 		if (references_data_str.reference_sequence_msa_indexes[ref_idx] == -1)

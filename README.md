@@ -2,30 +2,32 @@
 
 Estimates the relative proportions of influenza strains in a wastewater sequencing sample.
 
-Reads are aligned to a few reference strains, projected onto a multiple sequence alignment (MSA) of known influenza genomes, and compared against every strain in the MSA. An expectation–maximization (EM) mixture model then estimates what proportion of the sample each strain makes up.
+Reads are aligned to a few reference strains chosen from the reads themselves, projected onto a multiple sequence alignment (MSA) of known influenza genomes, and compared against every strain in the MSA. An expectation–maximization (EM) mixture model then estimates what proportion of the sample each strain makes up.
 
 ## How it works
 
 `eliminate_strains` runs these steps in order:
 
 1. **Read the MSA.** Loads every strain's aligned sequence and name.
-2. **Locate the reference strains.** For each strain given with `-r`, reads `<reference-sequences-dir>/<STRAIN>.fasta`, finds that strain in the MSA, and loads its base-to-column map from the positions file (`-p`).
-3. **Align reads with Bowtie2.** For each reference strain, builds a Bowtie2 index in `<bowtie2-indexes-dir>/<STRAIN>` if one doesn't exist yet, then aligns the reads with `bowtie2 --all`, writing `<working-dir>/<STRAIN>.sam`.
-4. **Read the SAM files and drop unaligned reads.** A read (or read pair) is dropped only if it failed to align to every reference strain. For paired reads, a pair counts as aligned if either mate is mapped; when only one mate maps, that mate's bases are still used.
-5. **Build the mismatch matrix.** For each read, its best alignment (fewest mismatches to its reference) is projected onto MSA columns, and its mismatches against every strain in the MSA are counted.
-6. **Group indistinguishable strains.** Strains whose mismatch counts are identical across every read cannot be told apart by this sample, so they are merged into a single `Group N`.
-7. **Estimate proportions with EM.** Each read's likelihood under strain *j* is
+2. **Choose the reference strains.** Aligns the reads to the non-imputed sequences of the strains with minimap2, then takes strains greedily until the aligned reads are covered (see [Choosing the reference strains](#choosing-the-reference-strains)).
+3. **Locate the reference strains.** For each chosen strain, reads `<reference-sequences-dir>/<STRAIN>.fasta`, finds that strain in the MSA, and loads its base-to-column map from the positions file (`-p`).
+4. **Align reads with Bowtie2.** For each reference strain, builds a Bowtie2 index in `<bowtie2-indexes-dir>/<STRAIN>` if one doesn't exist yet, then aligns the reads with `bowtie2 --all`, writing `<working-dir>/<STRAIN>.sam`.
+5. **Read the SAM files and drop unaligned reads.** A read (or read pair) is dropped only if it failed to align to every reference strain. For paired reads, a pair counts as aligned if either mate is mapped; when only one mate maps, that mate's bases are still used.
+6. **Build the mismatch matrix.** For each read, its best alignment (fewest mismatches to its reference) is projected onto MSA columns, and its mismatches against every strain in the MSA are counted.
+7. **Group indistinguishable strains.** Strains whose mismatch counts are identical across every read cannot be told apart by this sample, so they are merged into a single `Group N`.
+8. **Estimate proportions with EM.** Each read's likelihood under strain *j* is
 
    L<sub>ij</sub> = ε<sup>m<sub>ij</sub></sup> · (1 − ε)<sup>b<sub>i</sub> − m<sub>ij</sub></sup>
 
    where m<sub>ij</sub> is the read's mismatch count against strain *j*, b<sub>i</sub> is its number of aligned bases, and ε is the error rate (`-e`). EM, accelerated with SQUAREM and parallelized with OpenMP, finds the strain proportions that maximize the total likelihood. It runs from two starting points, one informed by the data and one random, and prints how far apart the two answers are as a convergence check.
-8. **Optional likelihood-ratio test** (`-l`). For the top `-z` strains, refits the model without each strain and reports a log-likelihood ratio measuring how much that strain is needed.
+9. **Optional likelihood-ratio test** (`-l`). For the top `-z` strains, refits the model without each strain and reports a log-likelihood ratio measuring how much that strain is needed.
 
 ## Requirements
 
 - **C compiler with OpenMP**, such as GCC.
 - **zlib** (`-lz`). All input files may be gzip-compressed.
 - **Bowtie2**. `bowtie2` and `bowtie2-build` must be on your `PATH`.
+- **minimap2**. `minimap2` must be on your `PATH`.
 
 ## Building
 
@@ -42,8 +44,9 @@ make clean
 |---|---|---|
 | MSA | `-i` | FASTA. Every sequence must be on **a single line**, all sequences must be the same length, and each line must be under 30,000 characters. Sequence names must match the reference strain names exactly. |
 | Positions file | `-p` | For each reference strain, a header line `>STRAIN` followed by one line of comma-separated integers: the MSA column index of each base of that strain's reference sequence, in order. The number of entries must equal the reference sequence length. |
-| Reference sequences | `-g` | A directory containing `<STRAIN>.fasta` for every strain passed to `-r`. The header must be the strain name, and the sequence must be on **a single line**. |
-| Bowtie2 indexes | `-b` | A directory for `<STRAIN>.1.bt2` and the other index files. Missing indexes are built automatically, but the directory must already exist. |
+| Reference sequences | `-g` | A directory containing `<STRAIN>.fasta`, the non-imputed sequence, for every strain (members of redundant groups included). The reference strains are chosen from these. The header must be the strain name, and the sequence must be on **a single line**. |
+| Bowtie2 indexes | `-b` | A directory for `<STRAIN>.1.bt2` and the other index files, and for `all_reference_sequences.mmi`, the minimap2 index of every sequence in `-g`. Missing indexes are built automatically, but the directory must already exist. |
+| Redundant groups | `-G` | Optional. The groups file of a nonredundant MSA: a `>cN` line for each group, followed by the names of its member strains. Without it, strains that are members of a group cannot be chosen as reference strains. |
 | Reads | `-1`/`-2` or `-0` | FASTQ by default, or FASTA with `-a`. Use `-P` with `-1` and `-2` for paired-end reads, or `-0` for single-end reads. |
 
 ## Usage
@@ -54,7 +57,7 @@ make clean
   -p strain_positions.txt \
   -g reference_sequences \
   -b bowtie2_indexes \
-  -r STRAIN_1 STRAIN_2 STRAIN_3 \
+  -G redundant_groups.txt \
   -P \
   -1 forward_reads.fastq \
   -2 reverse_reads.fastq \
@@ -64,17 +67,17 @@ make clean
   -t 32
 ```
 
-`-r` takes any number of strain names as **separate arguments**, up to the next argument that starts with `-`. Quoting them into one argument (`-r "A B C"`) makes the program look for a single strain named `A B C`.
-
 ### Options
 
 | Short | Long | Argument | Default | Description |
 |---|---|---|---|---|
 | `-i` | `--MSA-filepath` | file | required | MSA of influenza strains (FASTA) |
 | `-p` | `--non-imputed-positions-filepath` | file | required | Base-to-MSA-column map for each reference strain |
-| `-g` | `--reference-sequences-dir` | dir | required | Directory of `<STRAIN>.fasta` reference sequences |
+| `-g` | `--reference-sequences-dir` | dir | required | Directory of `<STRAIN>.fasta`, the non-imputed sequence of every strain |
 | `-b` | `--bowtie2-indexes-dir` | dir | required | Directory of Bowtie2 indexes, built if missing |
-| `-r` | `--reference-strains` | names | required | One or more reference strain names, space-separated |
+| `-G` | `--redundant-groups-filepath` | file | | Redundant groups file of the MSA, so that members of a group can be chosen as reference strains |
+| `-k` | `--min-strains-per-read` | int | 1 | Only reads that align to at least this many strains have to be covered by a reference strain |
+| `-x` | `--minimap2-args` | string | see below | minimap2 options for the first pass of choosing the reference strains, replacing the defaults (quote them) |
 | `-P` | `--paired` | | off | Reads are paired-end |
 | `-1` | `--forward-end-filepath` | file | | Forward reads (paired-end) |
 | `-2` | `--reverse-end-filepath` | file | | Reverse reads (paired-end) |
@@ -90,6 +93,24 @@ make clean
 | `-n` | `--no-read-sam` | | off | Currently has no effect |
 | `-v` | `--verbose` | | off | Show Bowtie2's own output instead of running it with `--quiet` |
 | `-h` | `--help` | | | Print usage |
+
+## Choosing the reference strains
+
+The program chooses the reference strains itself, before the Bowtie2 step, in two passes of minimap2:
+
+1. **First pass: all strains, each read's best strains only.** minimap2 aligns all reads to the sequences of all strains in the `-g` directory, with limits that keep it fast: for each read it reports the best-scoring strain and up to 100 more that score close to it. For each read, the program records these strains. In paired-end mode a pair is one read, and a strain counts for it if either mate aligned.
+2. **Provisional choice.** Reads that aligned to fewer than `-k` strains are left out. The program then takes the strain that covers the most reads not covered yet, and repeats until every remaining read is covered. This covers every read, but with more strains than needed: a read that matches thousands of strains equally well was given only 101 of them, and two such reads need not have been given the same ones.
+3. **Second pass: the provisional strains only, every strain a read aligns to.** minimap2 aligns all reads to the provisional strains with the limits lifted, which is cheap because there are few of them. Each read now has the complete list of provisional strains it aligns to.
+4. **Final choice.** The same greedy step on the complete lists. When strains tie, the one with the most matching bases over all its alignments is taken. The chosen strains are the reference strains for the rest of the run, and are listed in `selected_references.tsv` in the output directory.
+
+Things to know:
+
+- **The minimap2 index** of all sequences is built on the first run and kept as `all_reference_sequences.mmi` in the `-b` directory. Delete it after changing the `-g` directory. Let one run build it before starting runs in parallel.
+- **Redundant groups.** A strain that is a member of a group has no MSA row of its own; its row is the group's (`cN`). With `-G`, such strains can be chosen, and their mismatches are counted against the group's row at the strain's own positions. Without `-G`, alignments to them are ignored, and the number ignored is printed.
+- **minimap2 options.** The first pass uses `-x sr --secondary=yes -N 100 -p 0.9 -f 10000`, the options EsViritu aligns with (without its base-level alignment); `-x "..."` replaces them. The second pass uses the same options followed by `-N 1000000 -f 1000000 -K 500k`. Because of `-p`, a strain counts for a read only if it scores close to that read's best strain.
+- **`-k` counts first-pass strains**, so it can be at most 101.
+- A strain that is in no read's first-pass list cannot be chosen.
+- The reads are aligned three times (two minimap2 passes, then Bowtie2 against each chosen strain). Every chosen strain costs one more Bowtie2 run over all reads, including a strain chosen for a single read.
 
 ## Outputs
 
@@ -114,6 +135,8 @@ STRAIN_4
 
 **`per_strain_llr.csv`** is written only with `-l`. It has the columns `names.arg,p,llr` for the top `-z` strains.
 
+**`selected_references.tsv`** lists the chosen reference strains in the order they were chosen, with each one's MSA row and the number of reads it newly covered.
+
 The working directory also keeps one `<STRAIN>.sam` file per reference strain from the most recent run.
 
 ## Memory footprint
@@ -133,9 +156,11 @@ Peak usage is roughly **12 bytes × reads × strains**. Grouping unidentifiable 
 | File | Purpose |
 |---|---|
 | `eliminate_strains.c` | Entry point; runs the pipeline steps in order |
-| `options.c` | Command-line parsing, including the multi-name `-r` option |
+| `options.c` | Command-line parsing |
 | `msa.c` | Reads the MSA |
 | `align_references.c` | Locates reference strains in the MSA and loads their column maps |
+| `select_references.c` | Two minimap2 passes and greedy choice of reference strains |
+| `redundant_groups.c` | Reads the redundant groups file |
 | `bowtie_alignment.c` | Builds Bowtie2 indexes and runs alignments |
 | `sam.c` | Reads SAM files and drops reads that aligned to no reference |
 | `build_mismatch_matrix.c` | Counts each read's mismatches against every strain |

@@ -5,6 +5,7 @@
 #include <getopt.h>
 
 #include "options.h"
+#include "select_references.h"
 
 static struct option long_options[] =
 {
@@ -28,6 +29,9 @@ static struct option long_options[] =
 	{"working-dir", required_argument, 0, 'w'},
 	{"verbose", no_argument, 0, 'v'},
 	{"print-mismatch-matrix", no_argument, 0, 'd'},
+	{"redundant-groups-filepath", required_argument, 0, 'G'},
+	{"min-strains-per-read", required_argument, 0, 'k'},
+	{"minimap2-args", required_argument, 0, 'x'},
 	{0, 0, 0, 0}
 };
 
@@ -38,9 +42,11 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
 	-p, --non-imputed-positions-filepath [REQUIRED,FILE]		Filepath of the non-imputed positions for each strain within the MSA\n\
-	-g, --reference-sequences-dir [REQUIRED,DIR]		Directory of reference sequences\n\
-	-b, --bowtie2-indexes-dir [REQUIRED,DIR]		Directory of precomputed bowtie2 indexes for each reference sequence\n\
-	-r, --reference-strains [REQUIRED, NAME NAME ...]		List of the names of reference strains to use (e.g., -r EPI_ISL_19088566 EPI_ISL_19407907 ...)\n\
+	-g, --reference-sequences-dir [REQUIRED,DIR]		Directory of the non-imputed sequence of every strain (<STRAIN>.fasta). The reference strains are chosen from these: reads are aligned to them with minimap2, then strains are taken greedily (the one covering the most uncovered reads first)\n\
+	-b, --bowtie2-indexes-dir [REQUIRED,DIR]		Directory of precomputed bowtie2 indexes for each reference sequence; also holds the minimap2 index of all sequences (built if missing)\n\
+	-G, --redundant-groups-filepath [FILE]		Redundant groups file of the MSA (\">cN\" lines, each followed by its member strains). With it, strains that are members of a group can be chosen as reference strains\n\
+	-k, --min-strains-per-read [int]		Only reads that align to at least this many strains have to be covered by a reference strain [default: 1]\n\
+	-x, --minimap2-args [STRING]		minimap2 options for the first pass of choosing the reference strains, replacing the defaults (quote them) [default: \"" DEFAULT_MINIMAP2_ARGS "\"]\n\
 	-o, --output-dir [DIR]		Directory to place output files [default: .]\n\
 	-w, --working-dir [DIR]		Directory for intermediate/working files [default: .]\n\
 	-P, --paired		Using paired-reads\n\
@@ -68,59 +74,6 @@ void print_help_statement()
 	return;
 }
 
-static void extract_reference_strains_args(int *argc_ptr, char **argv, Options *opt)
-{
-	int argc = *argc_ptr;
-
-	int i;
-	for (i = 1; i < argc; i++)
-	{
-		if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--reference-strains") == 0)
-		{
-			if (opt->reference_strain_names != NULL)
-			{
-				fprintf(stderr, "Error: -r/--reference-strains was given more than once; list all strain names after a single -r.\n");
-				exit(1);
-			}
-
-			int flag_idx = i;
-			int j = i + 1;
-			int capacity = 16;
-			opt->reference_strain_names = (char **)malloc(capacity * sizeof(char *));
-
-			while (j < argc && argv[j][0] != '-')
-			{
-				if (opt->num_references == capacity)
-				{
-					capacity *= 2;
-					opt->reference_strain_names = (char **)realloc(opt->reference_strain_names, capacity * sizeof(char *));
-				}
-				opt->reference_strain_names[opt->num_references] = strdup(argv[j]);
-				opt->num_references++;
-				j++;
-			}
-
-			if (opt->num_references == 0)
-			{
-				fprintf(stderr, "Error: -r/--reference-strains was given with no strain names after it.\n");
-				exit(1);
-			}
-
-			int num_consumed = j - flag_idx;
-			int k;
-			for (k = flag_idx; k + num_consumed < argc; k++)
-			{
-				argv[k] = argv[k + num_consumed];
-			}
-			argc -= num_consumed;
-
-			i--;
-		}
-	}
-
-	*argc_ptr = argc;
-}
-
 /**
  * @brief Parses CLI arguments into an Options struct
  * 
@@ -131,7 +84,7 @@ static void extract_reference_strains_args(int *argc_ptr, char **argv, Options *
 void parse_options(int argc, char **argv, Options *opt)
 {
 	int option_index, success;
-	char c;
+	int c;
 	if (argc == 1)
 	{
 		print_help_statement();
@@ -147,12 +100,13 @@ void parse_options(int argc, char **argv, Options *opt)
 	opt->reverse_end_filepath[0] = '\0';
 	opt->reference_strain_names = NULL;
 	opt->num_references = 0;
+	opt->redundant_groups_filepath[0] = '\0';
+	strcpy(opt->minimap2_args, DEFAULT_MINIMAP2_ARGS);
+	opt->min_strains_per_read = 1;
 
-	extract_reference_strains_args(&argc, argv, opt);
-	
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vd", long_options, &option_index);
+		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vdG:k:x:", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -244,13 +198,42 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (!success)
 				fprintf(stderr, "Invalid number of top strains to compute LLR for\n");
 			break;
+		case 'G':
+			success = sscanf(optarg, "%2047s", opt->redundant_groups_filepath);
+			if (!success)
+				fprintf(stderr, "Invalid redundant groups filepath\n");
+			break;
+		case 'k':
+			if (sscanf(optarg, "%d", &(opt->min_strains_per_read)) != 1 || opt->min_strains_per_read < 1)
+			{
+				fprintf(stderr, "Error: -k/--min-strains-per-read must be a whole number, 1 or more.\n");
+				exit(1);
+			}
+			break;
+		case 'x':
+			if (strlen(optarg) >= sizeof(opt->minimap2_args))
+			{
+				fprintf(stderr, "Error: -x/--minimap2-args is too long.\n");
+				exit(1);
+			}
+			strcpy(opt->minimap2_args, optarg);
+			break;
+		case '?':
+			// unknown option (getopt has printed it), e.g. -r, which no longer exists
+			fprintf(stderr, "Run with -h for usage.\n");
+			exit(1);
 		}
 	}
 
 	if (opt->msa_filepath[0] == '\0' || opt->non_imputed_positions_filepath[0] == '\0' ||
-		opt->reference_sequences_dir[0] == '\0' || opt->bowtie2_indexes_dir[0] == '\0' || opt->num_references == 0)
+		opt->reference_sequences_dir[0] == '\0' || opt->bowtie2_indexes_dir[0] == '\0')
 	{
-		fprintf(stderr, "Error: -i, -p, -g, -b and -r are all required. Run with -h for usage.\n");
+		fprintf(stderr, "Error: -i, -p, -g and -b are all required. Run with -h for usage.\n");
+		exit(1);
+	}
+	if (optind < argc)
+	{
+		fprintf(stderr, "Error: unexpected argument '%s'. Run with -h for usage.\n", argv[optind]);
 		exit(1);
 	}
 	if (opt->paired && (opt->forward_end_filepath[0] == '\0' || opt->reverse_end_filepath[0] == '\0'))

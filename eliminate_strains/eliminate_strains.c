@@ -12,6 +12,8 @@
 #include "bowtie_alignment.h"
 #include "file_utils.h"
 #include "align_references.h"
+#include "select_references.h"
+#include "redundant_groups.h"
 #include "build_mismatch_matrix.h"
 #include "calculate_proportions.h"
 #include "debug.h"
@@ -60,6 +62,7 @@ int main(int argc, char **argv)
 	opt.no_read_bam = 0;
 	opt.num_references = 1;
 	opt.verbose = 0;
+	opt.print_mismatch_matrix = 0;
 	opt.num_threads = 1;
 	strcpy(opt.working_dir, ".");
 	strcpy(opt.output_dir, ".");
@@ -81,9 +84,21 @@ int main(int argc, char **argv)
 	printf("Number of strains in MSA: %d\n", msa_str.num_sequences);
 	printf("MSA sequence length: %d\n\n", msa_str.sequence_length);
 
+	RedundantGroups redundant_groups_str = read_redundant_groups(opt.redundant_groups_filepath);
+	if (opt.redundant_groups_filepath[0] != '\0')
+	{
+		printf("Redundant groups: %d (%d member strains)\n\n", redundant_groups_str.num_groups, redundant_groups_str.num_members);
+	}
+
+	printf("Choosing reference strains (minimap2, greedy cover)...\n");
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	opt.num_references = select_reference_strains(&opt, &msa_str, &redundant_groups_str, &opt.reference_strain_names);
+	clock_gettime(CLOCK_MONOTONIC, &tend);
+	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
 	printf("Aligning reference strains...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, opt.num_references);
+	ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, &redundant_groups_str, opt.num_references);
 	clock_gettime(CLOCK_MONOTONIC, &tend);
 	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 

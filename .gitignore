@@ -71,7 +71,7 @@ working/
 *.fastq
 *test.txt
 
-# scripts from server
+# scripts from moana server
 scripts/
 debug_scripts/
 esviritu_scripts/
