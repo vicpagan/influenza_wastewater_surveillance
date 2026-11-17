@@ -71,8 +71,16 @@ working/
 *.fastq
 *test.txt
 
+# scripts from server
+scripts/
+debug_scripts/
+esviritu_scripts/
+
 # vs code
 *.vscode
 
 # notes
 NOTES.md
+
+# metadata
+isolates_subtypes_clade_msa.tsv

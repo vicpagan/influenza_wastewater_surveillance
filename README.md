@@ -11,7 +11,7 @@ Reads are aligned to a few reference strains, projected onto a multiple sequence
 1. **Read the MSA.** Loads every strain's aligned sequence and name.
 2. **Locate the reference strains.** For each strain given with `-r`, reads `<reference-sequences-dir>/<STRAIN>.fasta`, finds that strain in the MSA, and loads its base-to-column map from the positions file (`-p`).
 3. **Align reads with Bowtie2.** For each reference strain, builds a Bowtie2 index in `<bowtie2-indexes-dir>/<STRAIN>` if one doesn't exist yet, then aligns the reads with `bowtie2 --all`, writing `<working-dir>/<STRAIN>.sam`.
-4. **Read the SAM files and drop unaligned reads.** A read (or read pair) is dropped only if it failed to align to every reference strain. For paired reads, both mates must be mapped to count as aligned.
+4. **Read the SAM files and drop unaligned reads.** A read (or read pair) is dropped only if it failed to align to every reference strain. For paired reads, a pair counts as aligned if either mate is mapped; when only one mate maps, that mate's bases are still used.
 5. **Build the mismatch matrix.** For each read, its best alignment (fewest mismatches to its reference) is projected onto MSA columns, and its mismatches against every strain in the MSA are counted.
 6. **Group indistinguishable strains.** Strains whose mismatch counts are identical across every read cannot be told apart by this sample, so they are merged into a single `Group N`.
 7. **Estimate proportions with EM.** Each read's likelihood under strain *j* is
