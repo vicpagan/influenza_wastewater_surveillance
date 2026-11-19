@@ -42,6 +42,8 @@ typedef struct Options
 	char redundant_groups_filepath[2048]; // empty: strains that are members of a group cannot be chosen
 	char minimap2_args[2048];
 	int min_strains_per_read;
+	double min_reference_identity;
+	int min_reads_per_added_reference;
 
 	// debug parameters
 	int verbose;

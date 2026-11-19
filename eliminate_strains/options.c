@@ -32,6 +32,8 @@ static struct option long_options[] =
 	{"redundant-groups-filepath", required_argument, 0, 'G'},
 	{"min-strains-per-read", required_argument, 0, 'k'},
 	{"minimap2-args", required_argument, 0, 'x'},
+	{"min-reference-identity", required_argument, 0, 'I'},
+	{"min-reads-per-added-reference", required_argument, 0, 'M'},
 	{0, 0, 0, 0}
 };
 
@@ -42,11 +44,14 @@ char usage[] = "\neliminate_strains [OPTIONS]\n\
 	-h, --help				\n\
 	-i, --MSA-filepath [REQUIRED,FILE]		Filepath of MSA FASTA of influenza reference strains\n\
 	-p, --non-imputed-positions-filepath [REQUIRED,FILE]		Filepath of the non-imputed positions for each strain within the MSA\n\
-	-g, --reference-sequences-dir [REQUIRED,DIR]		Directory of the non-imputed sequence of every strain (<STRAIN>.fasta). The reference strains are chosen from these: reads are aligned to them with minimap2, then strains are taken greedily (the one covering the most uncovered reads first)\n\
+	-g, --reference-sequences-dir [REQUIRED,DIR]		Directory of the non-imputed sequence of every strain (<STRAIN>.fasta). Reads are aligned to all of them with minimap2, to keep only the influenza reads and to add reference strains\n\
 	-b, --bowtie2-indexes-dir [REQUIRED,DIR]		Directory of precomputed bowtie2 indexes for each reference sequence; also holds the minimap2 index of all sequences (built if missing)\n\
-	-G, --redundant-groups-filepath [FILE]		Redundant groups file of the MSA (\">cN\" lines, each followed by its member strains). With it, strains that are members of a group can be chosen as reference strains\n\
-	-k, --min-strains-per-read [int]		Only reads that align to at least this many strains have to be covered by a reference strain [default: 1]\n\
-	-x, --minimap2-args [STRING]		minimap2 options for the first pass of choosing the reference strains, replacing the defaults (quote them) [default: \"" DEFAULT_MINIMAP2_ARGS "\"]\n\
+	-r, --reference-strains [NAME NAME ...]		Reference strains that are always used (e.g., -r EPI_ISL_19088566 EPI_ISL_19407907 ...). More strains are added automatically for the influenza reads these do not cover\n\
+	-G, --redundant-groups-filepath [FILE]		Redundant groups file of the MSA (\">cN\" lines, each followed by its member strains). With it, strains that are members of a group can be used as reference strains\n\
+	-I, --min-reference-identity [decimal]		A reference strain covers a read if at least 90 percent of the read aligns to it with at least this identity [default: 0.93]\n\
+	-M, --min-reads-per-added-reference [int]		A reference strain is added only if it covers at least this many reads that no reference strain covers yet [default: 5]\n\
+	-k, --min-strains-per-read [int]		A read is kept as an influenza read only if it aligns to at least this many strains, or to a strain given with -r [default: 1]\n\
+	-x, --minimap2-args [STRING]		minimap2 options for aligning the reads to all strains, replacing the defaults (quote them; keep -c) [default: \"" DEFAULT_MINIMAP2_ARGS "\"]\n\
 	-o, --output-dir [DIR]		Directory to place output files [default: .]\n\
 	-w, --working-dir [DIR]		Directory for intermediate/working files [default: .]\n\
 	-P, --paired		Using paired-reads\n\
@@ -72,6 +77,59 @@ void print_help_statement()
 {
 	printf("%s", &usage[0]);
 	return;
+}
+
+static void extract_reference_strains_args(int *argc_ptr, char **argv, Options *opt)
+{
+	int argc = *argc_ptr;
+
+	int i;
+	for (i = 1; i < argc; i++)
+	{
+		if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--reference-strains") == 0)
+		{
+			if (opt->reference_strain_names != NULL)
+			{
+				fprintf(stderr, "Error: -r/--reference-strains was given more than once; list all strain names after a single -r.\n");
+				exit(1);
+			}
+
+			int flag_idx = i;
+			int j = i + 1;
+			int capacity = 16;
+			opt->reference_strain_names = (char **)malloc(capacity * sizeof(char *));
+
+			while (j < argc && argv[j][0] != '-')
+			{
+				if (opt->num_references == capacity)
+				{
+					capacity *= 2;
+					opt->reference_strain_names = (char **)realloc(opt->reference_strain_names, capacity * sizeof(char *));
+				}
+				opt->reference_strain_names[opt->num_references] = strdup(argv[j]);
+				opt->num_references++;
+				j++;
+			}
+
+			if (opt->num_references == 0)
+			{
+				fprintf(stderr, "Error: -r/--reference-strains was given with no strain names after it.\n");
+				exit(1);
+			}
+
+			int num_consumed = j - flag_idx;
+			int k;
+			for (k = flag_idx; k + num_consumed < argc; k++)
+			{
+				argv[k] = argv[k + num_consumed];
+			}
+			argc -= num_consumed;
+
+			i--;
+		}
+	}
+
+	*argc_ptr = argc;
 }
 
 /**
@@ -101,12 +159,17 @@ void parse_options(int argc, char **argv, Options *opt)
 	opt->reference_strain_names = NULL;
 	opt->num_references = 0;
 	opt->redundant_groups_filepath[0] = '\0';
+	opt->min_reference_identity = 0.93;
+	opt->min_reads_per_added_reference = 5;
+
+	extract_reference_strains_args(&argc, argv, opt);
+
 	strcpy(opt->minimap2_args, DEFAULT_MINIMAP2_ARGS);
 	opt->min_strains_per_read = 1;
 
 	while (1)
 	{
-		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vdG:k:x:", long_options, &option_index);
+		c = getopt_long(argc, argv, "hi:p:g:b:o:Pm:0:1:2:e:alz:t:nw:vdG:k:x:I:M:", long_options, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -207,6 +270,20 @@ void parse_options(int argc, char **argv, Options *opt)
 			if (sscanf(optarg, "%d", &(opt->min_strains_per_read)) != 1 || opt->min_strains_per_read < 1)
 			{
 				fprintf(stderr, "Error: -k/--min-strains-per-read must be a whole number, 1 or more.\n");
+				exit(1);
+			}
+			break;
+		case 'I':
+			if (sscanf(optarg, "%lf", &(opt->min_reference_identity)) != 1 || opt->min_reference_identity <= 0 || opt->min_reference_identity > 1)
+			{
+				fprintf(stderr, "Error: -I/--min-reference-identity must be a number above 0 and at most 1.\n");
+				exit(1);
+			}
+			break;
+		case 'M':
+			if (sscanf(optarg, "%d", &(opt->min_reads_per_added_reference)) != 1 || opt->min_reads_per_added_reference < 1)
+			{
+				fprintf(stderr, "Error: -M/--min-reads-per-added-reference must be a whole number, 1 or more.\n");
 				exit(1);
 			}
 			break;

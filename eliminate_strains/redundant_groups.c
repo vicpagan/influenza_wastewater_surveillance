@@ -4,6 +4,7 @@
 #include <zlib.h>
 
 #include "redundant_groups.h"
+#include "file_utils.h"
 
 typedef struct GroupMember
 {
@@ -14,39 +15,6 @@ typedef struct GroupMember
 static int compare_group_members(const void *a, const void *b)
 {
 	return strcmp(((const GroupMember *)a)->member_name, ((const GroupMember *)b)->member_name);
-}
-
-/**
- * @brief Reads one whole line of any length, without its line ending
- *
- * @return int 1 if a line was read, 0 at the end of the file
- */
-static int read_whole_line(gzFile file, char **line, size_t *capacity)
-{
-	size_t length = 0;
-	if (*line == NULL)
-	{
-		*capacity = 1 << 16;
-		*line = (char *)malloc(*capacity);
-	}
-	(*line)[0] = '\0';
-
-	while (gzgets(file, *line + length, (int)(*capacity - length)) != NULL)
-	{
-		length += strlen(*line + length);
-		if (length > 0 && (*line)[length - 1] == '\n')
-		{
-			(*line)[strcspn(*line, "\r\n")] = '\0';
-			return 1;
-		}
-		if (length + 1 == *capacity)
-		{
-			*capacity *= 2;
-			*line = (char *)realloc(*line, *capacity);
-		}
-	}
-
-	return length > 0;
 }
 
 RedundantGroups read_redundant_groups(char *redundant_groups_filepath)
@@ -76,7 +44,7 @@ RedundantGroups read_redundant_groups(char *redundant_groups_filepath)
 	char *line = NULL;
 	size_t line_capacity = 0;
 
-	while (read_whole_line(file, &line, &line_capacity))
+	while (gz_read_line(file, &line, &line_capacity))
 	{
 		if (line[0] == '>')
 		{

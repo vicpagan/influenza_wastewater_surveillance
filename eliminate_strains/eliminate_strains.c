@@ -90,7 +90,7 @@ int main(int argc, char **argv)
 		printf("Redundant groups: %d (%d member strains)\n\n", redundant_groups_str.num_groups, redundant_groups_str.num_members);
 	}
 
-	printf("Choosing reference strains (minimap2, greedy cover)...\n");
+	printf("Finding the influenza reads and completing the reference strains (minimap2)...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
 	opt.num_references = select_reference_strains(&opt, &msa_str, &redundant_groups_str, &opt.reference_strain_names);
 	clock_gettime(CLOCK_MONOTONIC, &tend);

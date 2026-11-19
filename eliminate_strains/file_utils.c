@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <zlib.h>
 
 #include "file_utils.h"
 #include "global.h"
@@ -133,4 +134,37 @@ char *get_filepath_in_working_dir(char *filepath, char *working_dir)
 	sprintf(out_path, "%s/%s", working_dir, basename);
 
 	return out_path;
+}
+
+/**
+ * @brief Reads one whole line of any length, without its line ending
+ *
+ * @return int 1 if a line was read, 0 at the end of the file
+ */
+int gz_read_line(gzFile file, char **line, size_t *capacity)
+{
+	size_t length = 0;
+	if (*line == NULL)
+	{
+		*capacity = 1 << 16;
+		*line = (char *)malloc(*capacity);
+	}
+	(*line)[0] = '\0';
+
+	while (gzgets(file, *line + length, (int)(*capacity - length)) != NULL)
+	{
+		length += strlen(*line + length);
+		if (length > 0 && (*line)[length - 1] == '\n')
+		{
+			(*line)[strcspn(*line, "\r\n")] = '\0';
+			return 1;
+		}
+		if (length + 1 == *capacity)
+		{
+			*capacity *= 2;
+			*line = (char *)realloc(*line, *capacity);
+		}
+	}
+
+	return length > 0;
 }

@@ -1,6 +1,18 @@
 #ifndef FILE_UTILS_H
 #define FILE_UTILS_H
 
+#include <stddef.h>
+#include <zlib.h>
+
+/**
+ * @brief Reads one whole line of any length, without its line ending
+ *
+ * @param line buffer, allocated and enlarged as needed (start with *line == NULL)
+ * @param capacity size of the buffer
+ * @return int 1 if a line was read, 0 at the end of the file
+ */
+int gz_read_line(gzFile file, char **line, size_t *capacity);
+
 /**
  * @brief 
  * 
