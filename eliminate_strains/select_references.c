@@ -88,7 +88,7 @@ static int add_read(ReadTable *table, const char *name)
  * @param num_strains output: number of strains
  * @return char** the strain names, sorted
  */
-static char **list_strains_in_reference_sequences_dir(char *reference_sequences_dir, int *num_strains)
+char **list_strains_in_reference_sequences_dir(char *reference_sequences_dir, int *num_strains)
 {
 	DIR *dir = opendir(reference_sequences_dir);
 	if (dir == NULL)
@@ -130,7 +130,7 @@ static char **list_strains_in_reference_sequences_dir(char *reference_sequences_
  * @param strains indexes into strain_names of the strains to write, or NULL for all of them
  * @param num_strains number of strains to write
  */
-static void write_sequences_fasta(char *fasta_filepath, char *reference_sequences_dir, char **strain_names, int *strains, int num_strains)
+void write_sequences_fasta(char *fasta_filepath, char *reference_sequences_dir, char **strain_names, int *strains, int num_strains)
 {
 	int i;
 	FILE *fasta_file = fopen(fasta_filepath, "w");

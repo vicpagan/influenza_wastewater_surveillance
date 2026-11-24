@@ -11,6 +11,33 @@
 #include "build_mismatch_matrix.h"
 #include "sam.h"
 #include "msa.h"
+#include "anchor_alignment.h"
+
+/**
+ * @brief MSA positions of the sequence a SAM line is aligned to: element i is the MSA column
+ * of base i of that sequence. It is the reference strain of the SAM file, or, in the anchor
+ * modes, the target named in the line itself.
+ *
+ * @param target_name RNAME of the SAM line
+ * @param buffer room for one MSA row of positions (used in the anchor modes)
+ * @param length output: number of positions
+ */
+static const int *positions_of_sam_line(ReferencesData *references_data_str, int ref_idx, const char *target_name, int *buffer, int *length)
+{
+	if (references_data_str->anchor_targets == NULL)
+	{
+		*length = references_data_str->reference_sequence_lengths[ref_idx];
+		return references_data_str->references_to_msa_positions[ref_idx];
+	}
+
+	const int *positions = anchor_target_positions(references_data_str->anchor_targets, target_name, buffer, length);
+	if (positions == NULL)
+	{
+		*length = 0;
+		return buffer;
+	}
+	return positions;
+}
 
 void *build_mismatch_matrix_paired(void *ptr)
 {
@@ -58,6 +85,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 
 	int *current_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
 	int *best_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
+	int *positions_buffer = (int *)malloc((msa_sequence_length > 0 ? msa_sequence_length : 1) * sizeof(int));
 
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx = sam_line_idx + 2)
 	{
@@ -131,6 +159,9 @@ void *build_mismatch_matrix_paired(void *ptr)
 					}
 					strcpy(first_sequence, first_sam_fields[9]);
 
+					int first_num_positions = 0;
+					const int *first_positions = positions_of_sam_line(references_data_str, ref_idx, first_sam_fields[2], positions_buffer, &first_num_positions);
+
 					int first_sequence_offset = 0;
 					int first_reference_offset = 0;
 					for (j = 0; j < first_num_cigar_chars; j++)
@@ -139,7 +170,8 @@ void *build_mismatch_matrix_paired(void *ptr)
 						{
 							if (first_cigar_chars[j] == 'M')
 							{
-								int first_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][first_sequence_start_pos + first_reference_offset];
+								int first_reference_pos = first_sequence_start_pos + first_reference_offset;
+								int first_pos_in_msa = (first_reference_pos >= 0 && first_reference_pos < first_num_positions) ? first_positions[first_reference_pos] : -1;
 
 								if (first_pos_in_msa != -1)
 								{
@@ -191,7 +223,11 @@ void *build_mismatch_matrix_paired(void *ptr)
 						}
 					}
 					strcpy(second_sequence, second_sam_fields[9]);
-				
+
+					// the first mate's positions have been used by now, so the buffer is free again
+					int second_num_positions = 0;
+					const int *second_positions = positions_of_sam_line(references_data_str, ref_idx, second_sam_fields[2], positions_buffer, &second_num_positions);
+
 					int second_sequence_offset = 0;
 					int second_reference_offset = 0;
 					for (j = 0; j < second_num_cigar_chars; j++)
@@ -200,7 +236,8 @@ void *build_mismatch_matrix_paired(void *ptr)
 						{
 							if (second_cigar_chars[j] == 'M')
 							{
-								int second_pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][second_sequence_start_pos + second_reference_offset];
+								int second_reference_pos = second_sequence_start_pos + second_reference_offset;
+								int second_pos_in_msa = (second_reference_pos >= 0 && second_reference_pos < second_num_positions) ? second_positions[second_reference_pos] : -1;
 
 								if (second_pos_in_msa != -1)
 								{
@@ -334,6 +371,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 	free(merged_bases);
 	free(current_mismatch_matrix_row);
 	free(best_mismatch_matrix_row);
+	free(positions_buffer);
 
 	return NULL;
 }
@@ -374,6 +412,7 @@ void *build_mismatch_matrix_single(void *ptr)
 
 	int *current_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
 	int *best_mismatch_matrix_row = (int *)malloc(num_msa_sequences * sizeof(int));
+	int *positions_buffer = (int *)malloc((msa_sequence_length > 0 ? msa_sequence_length : 1) * sizeof(int));
 
 	for (sam_line_idx = sam_partition_start; sam_line_idx < sam_partition_end; sam_line_idx++)
 	{
@@ -430,6 +469,9 @@ void *build_mismatch_matrix_single(void *ptr)
 				}
 				strcpy(sequence, sam_fields[9]);
 
+				int num_positions = 0;
+				const int *positions = positions_of_sam_line(references_data_str, ref_idx, sam_fields[2], positions_buffer, &num_positions);
+
 				int current_alignment_size = 0;
 				int msa_index = 0;
 				int sequence_offset = 0;
@@ -440,7 +482,8 @@ void *build_mismatch_matrix_single(void *ptr)
 					{
 						if (cigar_chars[j] == 'M')
 						{
-							int pos_in_msa = references_data_str->references_to_msa_positions[ref_idx][sequence_start_pos + reference_offset];
+							int reference_pos = sequence_start_pos + reference_offset;
+							int pos_in_msa = (reference_pos >= 0 && reference_pos < num_positions) ? positions[reference_pos] : -1;
 							
 							if (pos_in_msa != -1)
 							{
@@ -517,6 +560,7 @@ void *build_mismatch_matrix_single(void *ptr)
 	free(bases);
 	free(current_mismatch_matrix_row);
 	free(best_mismatch_matrix_row);
+	free(positions_buffer);
 
 	return NULL;
 }

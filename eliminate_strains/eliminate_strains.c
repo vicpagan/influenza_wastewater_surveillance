@@ -13,6 +13,7 @@
 #include "file_utils.h"
 #include "align_references.h"
 #include "select_references.h"
+#include "anchor_alignment.h"
 #include "redundant_groups.h"
 #include "build_mismatch_matrix.h"
 #include "calculate_proportions.h"
@@ -90,23 +91,64 @@ int main(int argc, char **argv)
 		printf("Redundant groups: %d (%d member strains)\n\n", redundant_groups_str.num_groups, redundant_groups_str.num_members);
 	}
 
-	printf("Finding the influenza reads and completing the reference strains (minimap2)...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	opt.num_references = select_reference_strains(&opt, &msa_str, &redundant_groups_str, &opt.reference_strain_names);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	int anchor_mode = opt.alignment_mode == ALIGNMENT_MODE_ANCHOR_IMPUTED || opt.alignment_mode == ALIGNMENT_MODE_ANCHOR_REAL;
+	ReferencesData references_data_str;
 
-	printf("Aligning reference strains...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	ReferencesData references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, &redundant_groups_str, opt.num_references);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	if (anchor_mode)
+	{
+		// no reference strains: the reads are aligned to one index of all strains, and each read's best hit places it on the MSA
+		printf("Alignment mode: %s\n\n", opt.alignment_mode == ALIGNMENT_MODE_ANCHOR_IMPUTED ? "anchor-imputed (best hit over all MSA rows)" : "anchor-real (best hit over all non-imputed sequences)");
 
-	printf("Performing Bowtie2 alignments...\n");
-	clock_gettime(CLOCK_MONOTONIC, &tstart);
-	perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.num_threads, opt.verbose);
-	clock_gettime(CLOCK_MONOTONIC, &tend);
-	printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+		printf("Performing Bowtie2 alignment to all strains...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		perform_anchor_alignment(&opt, &msa_str);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+		// the one SAM file takes the place of the SAM files of the reference strains
+		for (i = 0; i < opt.num_references; i++)
+		{
+			free(opt.reference_strain_names[i]);
+		}
+		free(opt.reference_strain_names);
+		opt.num_references = 1;
+		opt.reference_strain_names = (char **)malloc(sizeof(char *));
+		opt.reference_strain_names[0] = strdup(anchor_index_name(opt.alignment_mode));
+
+		references_data_str.num_references = 1;
+		references_data_str.reference_names = (char **)calloc(1, sizeof(char *));
+		references_data_str.references_to_msa_positions = (int **)calloc(1, sizeof(int *));
+		references_data_str.reference_sequence_lengths = (int *)calloc(1, sizeof(int));
+		// with one SAM file there is no choice between references, so the row used for that choice does not matter
+		references_data_str.reference_sequence_msa_indexes = (int *)calloc(1, sizeof(int));
+		references_data_str.anchor_targets = NULL;
+	}
+	else
+	{
+		printf("Alignment mode: %s\n\n", opt.alignment_mode == ALIGNMENT_MODE_MINIMAP2 ? "minimap2 (influenza reads kept, reference strains added)" : "references (the reference strains given with -r)");
+
+		if (opt.alignment_mode == ALIGNMENT_MODE_MINIMAP2)
+		{
+			printf("Finding the influenza reads and completing the reference strains (minimap2)...\n");
+			clock_gettime(CLOCK_MONOTONIC, &tstart);
+			opt.num_references = select_reference_strains(&opt, &msa_str, &redundant_groups_str, &opt.reference_strain_names);
+			clock_gettime(CLOCK_MONOTONIC, &tend);
+			printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+		}
+
+		printf("Aligning reference strains...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		references_data_str = align_references(opt.reference_sequences_dir, opt.reference_strain_names, opt.non_imputed_positions_filepath, &msa_str, &redundant_groups_str, opt.num_references);
+		references_data_str.anchor_targets = NULL;
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+
+		printf("Performing Bowtie2 alignments...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		perform_bowtie_alignments(opt.reference_sequences_dir, opt.bowtie2_indexes_dir, opt.reference_strain_names, opt.num_references, opt.single_end_filepath, opt.forward_end_filepath, opt.reverse_end_filepath, opt.working_dir, opt.paired, opt.fasta_format, opt.num_threads, opt.verbose, opt.bowtie2_args);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	}
 
 	printf("Reading in SAM results...\n");
 	clock_gettime(CLOCK_MONOTONIC, &tstart);
@@ -115,6 +157,15 @@ int main(int argc, char **argv)
 	printf("Took %.5fsec\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
 	printf("Number of lines in SAM files: %d\n", references_data_str.sam_results_str.num_sam_lines);
 	printf("SAM max line length: %d\n\n", references_data_str.sam_results_str.max_sam_line_length);
+
+	if (anchor_mode)
+	{
+		printf("Finding the MSA positions of the strains the reads aligned to...\n");
+		clock_gettime(CLOCK_MONOTONIC, &tstart);
+		references_data_str.anchor_targets = prepare_anchor_targets(&opt, &msa_str, &references_data_str.sam_results_str);
+		clock_gettime(CLOCK_MONOTONIC, &tend);
+		printf("Took %.5fsec\n\n", ((double)tend.tv_sec + 1.0e-9 * tend.tv_nsec) - ((double)tstart.tv_sec + 1.0e-9 * tstart.tv_nsec));
+	}
 
 	int sam_lines_per_read = 1;
 	if (opt.paired)
@@ -156,6 +207,7 @@ int main(int argc, char **argv)
 	free(references_data_str.reference_names);
 	free(references_data_str.reference_sequence_msa_indexes);
 	free(references_data_str.reference_sequence_lengths);
+	free_anchor_targets(references_data_str.anchor_targets);
 
 	for (i = 0; i < msa_str.num_sequences; i++)
 	{

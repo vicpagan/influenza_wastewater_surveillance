@@ -27,6 +27,22 @@
 #define MIN_INFLUENZA_IDENTITY 0.8
 
 /**
+ * @brief Lists the strains that have a <STRAIN>.fasta file in the reference sequences directory
+ *
+ * @param num_strains output: number of strains
+ * @return char** the strain names, sorted
+ */
+char **list_strains_in_reference_sequences_dir(char *reference_sequences_dir, int *num_strains);
+
+/**
+ * @brief Writes the sequences of some strains to one FASTA file, each record named after its file
+ *
+ * @param strains indexes into strain_names of the strains to write, or NULL for all of them
+ * @param num_strains number of strains to write
+ */
+void write_sequences_fasta(char *fasta_filepath, char *reference_sequences_dir, char **strain_names, int *strains, int num_strains);
+
+/**
  * @brief Keeps the influenza reads and completes the list of reference strains, using
  * minimap2 on the non-imputed sequences of the strains (every <STRAIN>.fasta in the
  * reference sequences directory):

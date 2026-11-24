@@ -7,6 +7,12 @@
 #define MAX_CIGAR 1000 // max number of CIGAR operations in an alignment
 #define MAX_READ_LENGTH 1000 // max length of a single read
 
+// How the reads are placed on the MSA (-A/--alignment-mode)
+#define ALIGNMENT_MODE_REFERENCES 0     // Bowtie2 to each reference strain given with -r
+#define ALIGNMENT_MODE_MINIMAP2 1       // minimap2 keeps the influenza reads and adds reference strains, then as above
+#define ALIGNMENT_MODE_ANCHOR_IMPUTED 2 // Bowtie2 to all MSA rows (imputed sequences): each read's best hit places it
+#define ALIGNMENT_MODE_ANCHOR_REAL 3    // Bowtie2 to all non-imputed sequences: each read's best hit places it
+
 /**
  * @brief Struct to hold command line options
  * 
@@ -44,6 +50,10 @@ typedef struct Options
 	int min_strains_per_read;
 	double min_reference_identity;
 	int min_reads_per_added_reference;
+
+	// how the reads are placed on the MSA (ALIGNMENT_MODE_*), and extra Bowtie2 options
+	int alignment_mode;
+	char bowtie2_args[2048];
 
 	// debug parameters
 	int verbose;
@@ -127,6 +137,10 @@ typedef struct ReferencesData
 	int **references_to_msa_positions;
 	int *reference_sequence_lengths;
 	SAMResults sam_results_str;
+
+	// anchor modes only (otherwise NULL): there is one SAM file, and the target of each SAM line
+	// (its RNAME) gives the MSA positions of that line. See anchor_alignment.h
+	struct AnchorTargets *anchor_targets;
 	// ProblematicSites problematic_sites_str;
 } ReferencesData;
 
