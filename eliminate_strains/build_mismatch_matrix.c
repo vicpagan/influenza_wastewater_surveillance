@@ -39,6 +39,24 @@ static const int *positions_of_sam_line(ReferencesData *references_data_str, int
 	return positions;
 }
 
+/**
+ * @brief Length of the soft clip at the start of an alignment (0 if there is none).
+ *
+ * In Bowtie2 local mode the ends of a read that do not match are clipped ('S'). Those bases
+ * are still part of the read, so they are scored too: each clipped end is laid on the
+ * reference without gaps, as a continuation of the aligned part. POS in the SAM line is the
+ * reference position of the first aligned base, so the read starts this many bases before it.
+ */
+static int leading_soft_clip(const int *cigar_vals, const char *cigar_chars, int num_cigar_chars)
+{
+	int j = 0;
+	while (j < num_cigar_chars && cigar_chars[j] == 'H')
+	{
+		j++;
+	}
+	return (j < num_cigar_chars && cigar_chars[j] == 'S') ? cigar_vals[j] : 0;
+}
+
 void *build_mismatch_matrix_paired(void *ptr)
 {
 	int j, k, ref_idx, sam_line_idx, msa_seq_idx;
@@ -158,6 +176,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 						}
 					}
 					strcpy(first_sequence, first_sam_fields[9]);
+					first_sequence_start_pos -= leading_soft_clip(first_cigar_vals, first_cigar_chars, first_num_cigar_chars);
 
 					int first_num_positions = 0;
 					const int *first_positions = positions_of_sam_line(references_data_str, ref_idx, first_sam_fields[2], positions_buffer, &first_num_positions);
@@ -168,7 +187,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 					{
 						for (k = 0; k < first_cigar_vals[j]; k++)
 						{
-							if (first_cigar_chars[j] == 'M')
+							if (first_cigar_chars[j] == 'M' || first_cigar_chars[j] == 'S')
 							{
 								int first_reference_pos = first_sequence_start_pos + first_reference_offset;
 								int first_pos_in_msa = (first_reference_pos >= 0 && first_reference_pos < first_num_positions) ? first_positions[first_reference_pos] : -1;
@@ -181,9 +200,12 @@ void *build_mismatch_matrix_paired(void *ptr)
 								}
 								first_sequence_offset++;
 								first_reference_offset++;
-								current_alignment_size++;
+								if (first_cigar_chars[j] == 'M' || (first_reference_pos >= 0 && first_reference_pos < first_num_positions))
+								{
+									current_alignment_size++;
+								}
 							}
-							else if (first_cigar_chars[j] == 'I' || first_cigar_chars[j] == 'S')
+							else if (first_cigar_chars[j] == 'I')
 							{
 								first_sequence_offset++;
 							}
@@ -223,6 +245,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 						}
 					}
 					strcpy(second_sequence, second_sam_fields[9]);
+					second_sequence_start_pos -= leading_soft_clip(second_cigar_vals, second_cigar_chars, second_num_cigar_chars);
 
 					// the first mate's positions have been used by now, so the buffer is free again
 					int second_num_positions = 0;
@@ -234,7 +257,7 @@ void *build_mismatch_matrix_paired(void *ptr)
 					{
 						for (k = 0; k < second_cigar_vals[j]; k++)
 						{
-							if (second_cigar_chars[j] == 'M')
+							if (second_cigar_chars[j] == 'M' || second_cigar_chars[j] == 'S')
 							{
 								int second_reference_pos = second_sequence_start_pos + second_reference_offset;
 								int second_pos_in_msa = (second_reference_pos >= 0 && second_reference_pos < second_num_positions) ? second_positions[second_reference_pos] : -1;
@@ -247,9 +270,12 @@ void *build_mismatch_matrix_paired(void *ptr)
 								}
 								second_sequence_offset++;
 								second_reference_offset++;
-								current_alignment_size++;
+								if (second_cigar_chars[j] == 'M' || (second_reference_pos >= 0 && second_reference_pos < second_num_positions))
+								{
+									current_alignment_size++;
+								}
 							}
-							else if (second_cigar_chars[j] == 'I' || second_cigar_chars[j] == 'S')
+							else if (second_cigar_chars[j] == 'I')
 							{
 								second_sequence_offset++;
 							}
@@ -468,6 +494,7 @@ void *build_mismatch_matrix_single(void *ptr)
 					}
 				}
 				strcpy(sequence, sam_fields[9]);
+				sequence_start_pos -= leading_soft_clip(cigar_vals, cigar_chars, num_cigar_chars);
 
 				int num_positions = 0;
 				const int *positions = positions_of_sam_line(references_data_str, ref_idx, sam_fields[2], positions_buffer, &num_positions);
@@ -480,7 +507,7 @@ void *build_mismatch_matrix_single(void *ptr)
 				{
 					for (k = 0; k < cigar_vals[j]; k++)
 					{
-						if (cigar_chars[j] == 'M')
+						if (cigar_chars[j] == 'M' || cigar_chars[j] == 'S')
 						{
 							int reference_pos = sequence_start_pos + reference_offset;
 							int pos_in_msa = (reference_pos >= 0 && reference_pos < num_positions) ? positions[reference_pos] : -1;
@@ -493,9 +520,12 @@ void *build_mismatch_matrix_single(void *ptr)
 							}
 							sequence_offset++;
 							reference_offset++;
-							current_alignment_size++;
+							if (cigar_chars[j] == 'M' || (reference_pos >= 0 && reference_pos < num_positions))
+							{
+								current_alignment_size++;
+							}
 						}
-						else if (cigar_chars[j] == 'I' || cigar_chars[j] == 'S')
+						else if (cigar_chars[j] == 'I')
 						{
 							sequence_offset++;
 						}
